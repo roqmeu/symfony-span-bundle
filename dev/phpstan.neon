@@ -1,0 +1,16 @@
+parameters:
+  reportUnmatchedIgnoredErrors: false
+  ignoreErrors:
+    - '#.*(?i)short ternary operator is not allowed(?-i).*#'
+    - '#.*(?i)no value type specified in iterable type(?-i).*#'
+  level: 8
+  paths:
+    - ../src
+  excludePaths:
+    - ../tests/*
+includes:
+  - ../vendor/phpstan/phpstan-doctrine/extension.neon
+  - ../vendor/phpstan/phpstan-doctrine/rules.neon
+  - ../vendor/phpstan/phpstan-symfony/extension.neon
+  - ../vendor/phpstan/phpstan-symfony/rules.neon
+  - ../vendor/phpstan/phpstan-strict-rules/rules.neon

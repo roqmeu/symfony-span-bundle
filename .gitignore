@@ -1,0 +1,13 @@
+/*.cache
+/*.cache.*
+/*.local
+/*.local.*
+
+# Local
+/.idea/
+/var/
+/vendor/
+/test/**/_*
+
+/auth.json
+/composer.lock

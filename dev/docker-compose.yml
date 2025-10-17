@@ -1,0 +1,38 @@
+name: "symfony-span-bundle"
+
+services:
+  php:
+    user: www-data
+    build:
+      dockerfile: dev/Dockerfile
+      context: ..
+      args:
+        PHP_VERSION: "${PHP_VERSION?}"
+    environment:
+      GITHUB_TOKEN: "${GITHUB_TOKEN?}"
+      SYMFONY_VERSION: "${SYMFONY_VERSION?}"
+      PHP_IDE_CONFIG: "serverName=symfony-span-bundle.lan"
+    volumes:
+      - ..:/var/www/html
+    entrypoint: sleep infinity
+    depends_on:
+      pgsql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  redis:
+    user: redis
+    image: redis:7.4-alpine
+
+  pgsql:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: spanbundle
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

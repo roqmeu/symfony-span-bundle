@@ -1,0 +1,88 @@
+{
+    "name": "roqmeu/symfony-span-bundle",
+    "description": "Symfony Span Bundle",
+    "type": "symfony-bundle",
+    "keywords": [
+        "apm",
+        "opentelemetry",
+        "otel",
+        "otlp",
+        "profiling",
+        "symfony",
+        "tracing"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Roqmeu",
+            "email": "your@email.com"
+        }
+    ],
+    "require": {
+        "php": "^7.4 || ^8.0",
+        "symfony/config": "^5.0 || ^6.0 || ^7.0",
+        "symfony/dependency-injection": "^5.0 || ^6.0 || ^7.0",
+        "symfony/event-dispatcher": "^5.0 || ^6.0 || ^7.0"
+    },
+    "conflict": {
+        "doctrine/dbal": "<3.0 || >=4.0",
+        "guzzlehttp/guzzle": "<7.0 || >=8.0",
+        "symfony/amqp-messenger": "<5.0 || >=8.0",
+        "symfony/console": "<5.0 || >=8.0",
+        "symfony/doctrine-messenger": "<5.0 || >=8.0",
+        "symfony/framework-bundle": "<5.0 || >=8.0",
+        "symfony/http-client": "<5.0 || >=8.0",
+        "symfony/http-foundation": "<5.0 || >=8.0",
+        "symfony/http-kernel": "<5.0 || >=8.0",
+        "symfony/messenger": "<5.0 || >=8.0",
+        "symfony/redis-messenger": "<5.0 || >=8.0"
+    },
+    "require-dev": {
+        "ext-posix": "*",
+        "codeception/codeception": "^4.0 || ^5.0",
+        "codeception/module-asserts": "^2.0 || ^3.0",
+        "codeception/module-symfony": "^2.0 || ^3.0",
+        "doctrine/dbal": "^3.0",
+        "doctrine/doctrine-bundle": "^2.0",
+        "guzzlehttp/guzzle": "^7.0",
+        "open-telemetry/api": "^1.0",
+        "open-telemetry/sdk": "^1.0",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-doctrine": "^2.0",
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "phpstan/phpstan-symfony": "^2.0",
+        "roave/security-advisories": "dev-latest",
+        "sentry/sentry-symfony": "^5.0",
+        "symfony/amqp-messenger": "^5.4 || ^6.4 || ^7.0",
+        "symfony/console": "^5.4 || ^6.4 || ^7.0",
+        "symfony/doctrine-messenger": "^5.4 || ^6.4 || ^7.0",
+        "symfony/framework-bundle": "^5.4 || ^6.4 || ^7.0",
+        "symfony/http-client": "^5.4 || ^6.4 || ^7.0",
+        "symfony/http-foundation": "^5.4 || ^6.4 || ^7.0",
+        "symfony/http-kernel": "^5.4 || ^6.4 || ^7.0",
+        "symfony/messenger": "^5.4 || ^6.4 || ^7.0",
+        "symfony/redis-messenger": "^5.4 || ^6.4 || ^7.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Roqmeu\\SpanBundle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Roqmeu\\SpanBundle\\Test\\Fixture\\": "test/fixture/",
+            "Roqmeu\\SpanBundle\\Test\\Functional\\": "test/functional/",
+            "Roqmeu\\SpanBundle\\Test\\Support\\": "test/support/",
+            "Roqmeu\\SpanBundle\\Test\\Unit\\": "test/unit/"
+        }
+    },
+    "config": {
+        "preferred-install": {
+            "*": "dist"
+        },
+        "sort-packages": true,
+        "allow-plugins": {
+            "*/*": false
+        }
+    }
+}

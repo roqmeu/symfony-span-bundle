@@ -1,0 +1,9 @@
+actor: FunctionalTester
+modules:
+  enabled:
+    - Asserts
+    - Symfony:
+        app_path: test/fixture
+        kernel_class: Roqmeu\SpanBundle\Test\Fixture\TestKernel
+        environment: test
+        debug: false
