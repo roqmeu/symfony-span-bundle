@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Roqmeu\SpanBundle;
 
+use Roqmeu\SpanBundle\DependencyInjection\Compiler\CleanupPass;
 use Roqmeu\SpanBundle\DependencyInjection\Compiler\DoctrineMiddlewarePass;
-use Roqmeu\SpanBundle\DependencyInjection\Compiler\GuzzleHttpClientPass;
-use Roqmeu\SpanBundle\DependencyInjection\Compiler\MessengerMiddlewarePass;
+use Roqmeu\SpanBundle\DependencyInjection\Compiler\GuzzleMiddlewarePass;
+use Roqmeu\SpanBundle\DependencyInjection\Compiler\ProfilerMiddlewarePass;
 use Roqmeu\SpanBundle\DependencyInjection\Compiler\SymfonyHttpClientPass;
+use Roqmeu\SpanBundle\DependencyInjection\Compiler\SymfonyMessengerMiddlewarePass;
 use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
@@ -16,10 +18,10 @@ class SpanBundle extends Bundle
 {
     public const UNKNOWN = 'unknown';
 
-    # Transaction types
-    public const TRANSACTION_TYPE_CONSOLE = 'console';
-    public const TRANSACTION_TYPE_CONSUMER = 'consumer';
-    public const TRANSACTION_TYPE_SERVER = 'server';
+    # Span core types
+    public const SPAN_TYPE_CONSOLE = 'console';
+    public const SPAN_TYPE_CONSUMER = 'consumer';
+    public const SPAN_TYPE_SERVER = 'server';
 
     # Span types
     public const SPAN_TYPE_CLIENT = 'client';
@@ -35,8 +37,11 @@ class SpanBundle extends Bundle
     public const SPAN_SUBTYPE_MESSENGER = 'messenger';
 
     public const SPAN_SUBTYPE_DOCTRINE = 'doctrine';
-    public const SPAN_SUBTYPE_POSTGRESQL = 'postgresql';
+    public const SPAN_SUBTYPE_MSSQL = 'mssql';
     public const SPAN_SUBTYPE_MYSQL = 'mysql';
+    public const SPAN_SUBTYPE_ORACLE = 'oracle';
+    public const SPAN_SUBTYPE_POSTGRESQL = 'postgresql';
+    public const SPAN_SUBTYPE_SQLITE = 'sqlite';
 
     public const SPAN_SUBTYPE_APP = 'app';
     public const SPAN_SUBTYPE_PROFILE = 'profile';
@@ -46,9 +51,12 @@ class SpanBundle extends Bundle
         parent::build($container);
 
         $container->addCompilerPass(new DoctrineMiddlewarePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 100);
-        $container->addCompilerPass(new MessengerMiddlewarePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 100);
+        $container->addCompilerPass(new SymfonyMessengerMiddlewarePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 100);
+        $container->addCompilerPass(new ProfilerMiddlewarePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 100);
 
-        $container->addCompilerPass(new GuzzleHttpClientPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -100);
+        $container->addCompilerPass(new GuzzleMiddlewarePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -100);
         $container->addCompilerPass(new SymfonyHttpClientPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -100);
+
+        $container->addCompilerPass(new CleanupPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -256);
     }
 }

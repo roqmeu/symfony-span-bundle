@@ -41,6 +41,9 @@ class DbalOkCommand extends Command
         );
 
         $result = $this->connection->executeQuery('SELECT * FROM test_users WHERE name = ?', ['John Doe']);
+
+        // Successful query
+        // TODO CHECK USER EXISTS
         $users = $result->fetchAllAssociative();
 
         $this->connection->executeStatement(

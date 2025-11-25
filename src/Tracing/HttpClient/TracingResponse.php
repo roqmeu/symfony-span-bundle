@@ -4,23 +4,26 @@ declare(strict_types=1);
 
 namespace Roqmeu\SpanBundle\Tracing\HttpClient;
 
+use Roqmeu\SpanBundle\SpanTracer;
 use Roqmeu\SpanBundle\State\Span;
-use Roqmeu\SpanBundle\Transport\Dispatcher\Dispatcher;
 use Symfony\Component\HttpClient\Response\StreamableInterface;
+use Symfony\Contracts\HttpClient\ChunkInterface;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 
 abstract class TracingResponse implements ResponseInterface, StreamableInterface
 {
+    protected ?SpanTracer $spanTracer;
+
     public ResponseInterface $response;
 
     private ?Span $span;
-    private ?Dispatcher $dispatcher;
 
-    public function __construct(ResponseInterface $response, Span $span, Dispatcher $dispatcher)
+    public function __construct(?SpanTracer $spanTracer, ?Span $span, ResponseInterface $response)
     {
-        $this->response = $response;
+        $this->spanTracer = $spanTracer;
         $this->span = $span;
-        $this->dispatcher = $dispatcher;
+        $this->response = $response;
     }
 
     public function __sleep(): array
@@ -35,8 +38,12 @@ abstract class TracingResponse implements ResponseInterface, StreamableInterface
 
     public function __destruct()
     {
-        if (method_exists($this->response, '__destruct')) {
-            $this->response->__destruct();
+        try {
+            if (method_exists($this->response, '__destruct')) {
+                $this->response->__destruct();
+            }
+        } finally {
+            $this->finish();
         }
     }
 
@@ -55,7 +62,7 @@ abstract class TracingResponse implements ResponseInterface, StreamableInterface
             return $this->response->getStatusCode();
         } catch (\Throwable $error) {
             if ($this->span !== null) {
-                $this->span->error = $error;
+                $this->span->setError($error);
             }
 
             throw $error;
@@ -70,7 +77,7 @@ abstract class TracingResponse implements ResponseInterface, StreamableInterface
             return $this->response->getHeaders($throw);
         } catch (\Throwable $error) {
             if ($this->span !== null) {
-                $this->span->error = $error;
+                $this->span->setError($error);
             }
 
             throw $error;
@@ -85,7 +92,7 @@ abstract class TracingResponse implements ResponseInterface, StreamableInterface
             return $this->response->getContent($throw);
         } catch (\Throwable $error) {
             if ($this->span !== null) {
-                $this->span->error = $error;
+                $this->span->setError($error);
             }
 
             throw $error;
@@ -100,7 +107,7 @@ abstract class TracingResponse implements ResponseInterface, StreamableInterface
             return $this->response->toArray($throw);
         } catch (\Throwable $error) {
             if ($this->span !== null) {
-                $this->span->error = $error;
+                $this->span->setError($error);
             }
 
             throw $error;
@@ -120,29 +127,31 @@ abstract class TracingResponse implements ResponseInterface, StreamableInterface
 
     private function finish(): void
     {
-        if ($this->span === null || $this->dispatcher === null) {
+        if ($this->span === null || $this->spanTracer === null) {
             return;
         }
 
         $info = $this->response->getInfo();
 
-        if (!is_array($info) || count($info) === 0) {
+        if (!\is_array($info) || \count($info) === 0) {
             return;
         }
 
         $start = $info['start_time'] ?? 0;
 
-        if ($start > $this->span->start) {
-            $this->span->start = $start;
+        if ($start > 0) {
+            $this->span->setStartTime($start);
         }
 
         $duration = $info['total_time'] ?? 0;
 
-        if ($duration > 0) {
+        if ($start > 0 && $duration > 0) {
             $end = $start + $duration;
         } else {
-            $end = (int)microtime(true);
+            $end = microtime(true);
         }
+
+        $this->span->setEndTime($end);
 
         $statusCode = (int)($info['http_code'] ?? 0);
 
@@ -151,15 +160,44 @@ abstract class TracingResponse implements ResponseInterface, StreamableInterface
                 'status_code' => $statusCode,
             ];
 
-            if ($this->span->successful === null) {
-                $this->span->successful = $statusCode >= 100 && $statusCode < 400;
+            $this->span->setSuccessfulIf($statusCode >= 100 && $statusCode < 400);
+        }
+
+        $this->spanTracer->endSpan($this->span);
+
+        $this->spanTracer = $this->span = null;
+    }
+
+    /**
+     * @param iterable<ResponseInterface> $responses
+     *
+     * @return \Generator<ResponseInterface, ChunkInterface>
+     */
+    public static function stream(HttpClientInterface $client, iterable $responses, ?float $timeout): \Generator
+    {
+        $tracingResponseMap = [];
+        $innerResponses = [];
+
+        foreach ($responses as $response) {
+            if ($response instanceof self) {
+                $tracingResponseMap[\spl_object_id($response->response)] = $response;
+
+                $innerResponses[] = $response->response;
+            } else {
+                $innerResponses[] = $response;
             }
         }
 
-        $this->span->end($end);
-        $this->dispatcher->spanFinished($this->span);
+        foreach ($client->stream($innerResponses, $timeout) as $response => $chunk) {
+            $tracingResponse = $tracingResponseMap[\spl_object_id($response)] ?? null;
 
-        $this->span = null;
-        $this->dispatcher = null;
+            if ($tracingResponse !== null) {
+                $tracingResponse->finish();
+
+                yield $tracingResponse => $chunk;
+            } else {
+                yield $response => $chunk;
+            }
+        }
     }
 }

@@ -6,6 +6,11 @@ namespace Roqmeu\SpanBundle\Profiling;
 
 class SpanNullProfiler implements SpanProfiler
 {
+    public function has(string $name): bool
+    {
+        return false;
+    }
+
     public function start(string $name): void
     {
     }

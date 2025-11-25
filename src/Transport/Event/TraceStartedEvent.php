@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace Roqmeu\SpanBundle\Transport\Event;
 
-use Roqmeu\SpanBundle\State\Transaction;
+use Roqmeu\SpanBundle\State\Trace;
 
 class TraceStartedEvent
 {
-    public Transaction $trace;
+    public Trace $trace;
 
-    public function __construct(
-        Transaction $trace
-    ) {
+    public function __construct(Trace $trace)
+    {
         $this->trace = $trace;
     }
 }

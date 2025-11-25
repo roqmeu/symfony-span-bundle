@@ -8,33 +8,28 @@ use GuzzleHttp\Promise\PromiseInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Roqmeu\SpanBundle\SpanBundle;
-use Roqmeu\SpanBundle\State\TransactionPool;
-use Roqmeu\SpanBundle\Tracing\SpanTracingTrait;
-use Roqmeu\SpanBundle\Transport\Dispatcher\Dispatcher;
+use Roqmeu\SpanBundle\SpanTracer;
+use Roqmeu\SpanBundle\State\Span;
 
 class TracingMiddleware
 {
-    use SpanTracingTrait;
+    protected SpanTracer $spanTracer;
 
     /**
      * @var callable(RequestInterface, array): PromiseInterface
      */
     private $nextHandler;
 
-    public function __construct(
-        Dispatcher $dispatcher,
-        TransactionPool $tracePool,
-        callable $nextHandler
-    ) {
-        $this->dispatcher = $dispatcher;
-        $this->tracePool = $tracePool;
+    public function __construct(SpanTracer $spanTracer, callable $nextHandler)
+    {
+        $this->spanTracer = $spanTracer;
         $this->nextHandler = $nextHandler;
     }
 
-    public static function create(Dispatcher $dispatcher, TransactionPool $tracePool): callable
+    public static function create(SpanTracer $spanTracer): callable
     {
-        return static function (callable $nextHandler) use ($dispatcher, $tracePool): callable {
-            return new TracingMiddleware($dispatcher, $tracePool, $nextHandler);
+        return static function (callable $nextHandler) use ($spanTracer): callable {
+            return new TracingMiddleware($spanTracer, $nextHandler);
         };
     }
 
@@ -42,32 +37,31 @@ class TracingMiddleware
     {
         $fn = $this->nextHandler;
 
-        $parent = $this->tracePool->getCurrentSpan();
-
-        if ($parent === null) {
+        if (!$this->spanTracer->hasActiveTrace()) {
             return $fn($request, $options);
         }
 
         $uri = $request->getUri();
+
         $scheme = $uri->getScheme();
         $host = $uri->getHost();
         $port = $uri->getPort();
 
         $targetName = $host;
 
-        if ($scheme !== '') {
-            $targetName = "{$scheme}://{$targetName}";
+        if ($port === null && $scheme !== '') {
+            $schemePort = \getservbyname($scheme, 'tcp');
+
+            if ($schemePort !== false) {
+                $port = $schemePort;
+            }
         }
+
         if ($port !== null) {
             $targetName = "{$targetName}:{$port}";
         }
 
-        $span = $this->beginSpan(
-            $parent,
-            "{$request->getMethod()} {$targetName}",
-            SpanBundle::SPAN_TYPE_CLIENT,
-            SpanBundle::SPAN_SUBTYPE_HTTP
-        );
+        $span = new Span("{$request->getMethod()} {$targetName}", SpanBundle::SPAN_TYPE_CLIENT, SpanBundle::SPAN_SUBTYPE_HTTP);
 
         $span->context->target = [
             'type' => SpanBundle::SPAN_SUBTYPE_HTTP,
@@ -77,31 +71,31 @@ class TracingMiddleware
         $span->context->http_request = [
             'method' => $request->getMethod(),
             'url' => [
-                'scheme' => $scheme,
                 'domain' => $host,
-                'port' => (string)$port,
                 'path' => $uri->getPath(),
+                'port' => $port,
+                'scheme' => $scheme,
             ],
         ];
+
+        $this->spanTracer->startSpan($span);
 
         return $fn($request, $options)->then(
             function (ResponseInterface $response) use ($span) {
                 $statusCode = $response->getStatusCode();
+
                 $span->context->http_response['status_code'] = $statusCode;
 
-                if ($span->successful === null) {
-                    $span->successful = $statusCode >= 100 && $statusCode < 400;
-                }
+                $span->setSuccessfulIf($statusCode >= 100 && $statusCode < 400);
 
-                $this->endSpan($span);
+                $this->spanTracer->endSpan($span);
 
                 return $response;
             },
             function (\Throwable $error) use ($span) {
-                $span->error = $error;
-                $span->successful = false;
+                $span->setError($error);
 
-                $this->endSpan($span);
+                $this->spanTracer->endSpan($span);
 
                 throw $error;
             }

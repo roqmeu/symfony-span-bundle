@@ -6,6 +6,8 @@ namespace Roqmeu\SpanBundle\Profiling;
 
 interface SpanProfiler
 {
+    public function has(string $name): bool;
+
     public function start(string $name): void;
 
     public function stop(string $name): void;

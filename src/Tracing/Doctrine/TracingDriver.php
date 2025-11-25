@@ -4,44 +4,37 @@ declare(strict_types=1);
 
 namespace Roqmeu\SpanBundle\Tracing\Doctrine;
 
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Driver;
 use Doctrine\DBAL\Driver\API\ExceptionConverter;
-use Doctrine\DBAL\Driver\Connection;
+use Doctrine\DBAL\Driver\Connection as DriverConnection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
-use Roqmeu\SpanBundle\State\TransactionPool;
-use Roqmeu\SpanBundle\Transport\Dispatcher\Dispatcher;
+use Roqmeu\SpanBundle\SpanTracer;
+use Roqmeu\SpanBundle\SpanTracerAwareTrait;
 
 class TracingDriver implements Driver
 {
+    use SpanTracerAwareTrait;
+
+    use DbalTracingTrait;
+
     private Driver $driver;
-    private Dispatcher $dispatcher;
-    private TransactionPool $tracePool;
 
-    public function __construct(
-        Dispatcher $dispatcher,
-        TransactionPool $tracePool,
-        Driver $driver
-    ) {
-        $this->dispatcher = $dispatcher;
-        $this->tracePool = $tracePool;
-
+    public function __construct(SpanTracer $spanTracer, Driver $driver)
+    {
+        $this->spanTracer = $spanTracer;
         $this->driver = $driver;
     }
 
-    public function connect(array $params): Connection
+    public function connect(array $params): DriverConnection
     {
         $connection = $this->driver->connect($params);
 
-        $driverType = $this->determineDriverType();
+        $databaseType = $this->determineDatabaseType($this->driver);
+        $databaseName = $this->determineDatabaseName($params);
 
-        return new TracingConnection(
-            $this->dispatcher,
-            $this->tracePool,
-            $connection,
-            $params,
-            $driverType
-        );
+        return new TracingConnection($this->spanTracer, $connection, $params, $databaseType, $databaseName);
     }
 
     public function getDatabasePlatform(): AbstractPlatform
@@ -54,29 +47,11 @@ class TracingDriver implements Driver
         return $this->driver->getExceptionConverter();
     }
 
-    public function getSchemaManager(
-        \Doctrine\DBAL\Connection $conn,
-        AbstractPlatform $platform
-    ): AbstractSchemaManager {
-        return $this->driver->getSchemaManager($conn, $platform);
-    }
-
-    private function determineDriverType(): string
+    /**
+     * @return AbstractSchemaManager<AbstractPlatform>
+     */
+    public function getSchemaManager(Connection $conn, AbstractPlatform $platform): AbstractSchemaManager
     {
-        $platform = $this->driver->getDatabasePlatform();
-
-        // TODO getName deprecated - Identify platforms by their class.
-        $platformName = $platform->getName();
-
-        $platformMap = [
-            'postgresql' => 'postgresql',
-            'mysql' => 'mysql',
-            'mariadb' => 'mysql',
-            'sqlite' => 'sqlite',
-            'mssql' => 'mssql',
-            'oracle' => 'oracle',
-        ];
-
-        return $platformMap[$platformName] ?? 'doctrine';
+        return $this->driver->getSchemaManager($conn, $platform);
     }
 }

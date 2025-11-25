@@ -6,22 +6,20 @@ namespace Roqmeu\SpanBundle\Tracing\Doctrine;
 
 use Doctrine\DBAL\Driver;
 use Doctrine\DBAL\Driver\Middleware;
-use Roqmeu\SpanBundle\State\TransactionPool;
-use Roqmeu\SpanBundle\Transport\Dispatcher\Dispatcher;
+use Roqmeu\SpanBundle\SpanTracer;
+use Roqmeu\SpanBundle\SpanTracerAwareTrait;
 
 class TracingMiddleware implements Middleware
 {
-    private Dispatcher $dispatcher;
-    private TransactionPool $tracePool;
+    use SpanTracerAwareTrait;
 
-    public function __construct(Dispatcher $dispatcher, TransactionPool $tracePool)
+    public function __construct(SpanTracer $spanTracer)
     {
-        $this->dispatcher = $dispatcher;
-        $this->tracePool = $tracePool;
+        $this->spanTracer = $spanTracer;
     }
 
     public function wrap(Driver $driver): Driver
     {
-        return new TracingDriver($this->dispatcher, $this->tracePool, $driver);
+        return new TracingDriver($this->spanTracer, $driver);
     }
 }

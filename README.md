@@ -1,139 +1,180 @@
 # Symfony Span bundle
 
-Symfony bundle that adds tracing and instrumentation for HTTP, Doctrine, Messenger and other components — ready for integration with Elastic APM, OpenTelemetry and similar observability systems.
+Symfony-бандл, добавляющий трассировку и инструментирование для HTTP, Doctrine, Messenger и других компонентов. Готов к интеграции с Elastic APM, OpenTelemetry и подобными системами наблюдаемости.
 
-## Основные концепции
+## Возможности
 
-Этот бандл использует свои DTO разработанные на основе стандарта OpenTelemetry, но сильно облегчённые для передачи между слоями.
+- Автоинструментирование Symfony HTTP Client, Guzzle, Doctrine DBAL и Symfony Messenger (sync, AMQP, Redis, Doctrine transport).
+- Централизованное управление трейсами и спанами, совместимое с OpenTelemetry naming-конвенциями.
+- Событийная модель работы: бандл диспатчит события жизненного цикла спанов/трейсов; адаптеры экспортируют данные во внешние системы.
+- Встроенный мост к Elastic APM, учитывающий спецификации агента и маппинг контекста.
+- Профилинг корневых спанов через `ext-excimer` с преобразованием профиля в `internal.profile` спаны.
 
-Бандл ориентируется на наименование и типизирование спанов в OpenTelemetry, ElasticCommonSchema и Sentry.
+## Требования
 
-Поддерживается автоматическая обработка Symfony HTTP Client, Guzzle HTTP Client, Doctrine DBAL, Symfony Messenger (Sync, AMQP, Redis, Doctrine).
+- PHP `^7.4` или `^8.0`.
+- Symfony компоненты (Config, DependencyInjection, EventDispatcher) версий `^5.0 || ^6.0 || ^7.0`.
+- Поддержка Doctrine DBAL `^3.0`, Guzzle `^7.0`, Symfony Messenger `^5.4 || ^6.4 || ^7.0` для dev/test окружения.
+- Для профилинга (опционально): PHP-расширение `excimer` (`ext-excimer`).
 
-Основной формат коммуникации - SpanBundle отправляет Event в EventDispatcher, транспорт слушает эвенты и отправляет по своей реализации. Зона ответственности SpanBundle завершается после отправки эвента в EventDispatcher.
+## Установка
+
+```bash
+composer require roqmeu/symfony-span-bundle
+```
+
+Если вы не используете Symfony Flex, добавьте бандл вручную в `config/bundles.php`:
+
+```php
+return [
+    // ...
+    Roqmeu\SpanBundle\SpanBundle::class => ['all' => true],
+];
+```
+
+После установки бандл предоставляет сервисы `SpanTracer`, `SpanInteractor` и `EventDispatcher`, которые можно внедрять через автоконфигурацию.
+
+## Быстрый старт
+
+1. Включите бандл и трассировку в конфиге (по умолчанию всё выключено).
+2. Подключите бандл и соберите контейнер.
+3. Подпишитесь на события `TraceStartedEvent`, `TraceEndedEvent`, `SpanStartedEvent`, `SpanEndedEvent`, если требуется собственный экспорт.
+4. Используйте `SpanTracer` для создания и завершения спанов в пользовательском коде или полагайтесь на готовые интеграции.
+
+## Конфигурация
+
+По умолчанию бандл **выключен**. Автоинструментирование и листенеры включаются только при явном включении флагов.
+
+Пример `config/packages/span.yaml`:
+
+```yaml
+span:
+  enabled: true
+
+  tracing:
+    enabled: true
+
+  profiling:
+    # bool или placeholder (%env(...)% / %parameter%)
+    enabled: '%env(bool:default::SPAN_PROFILER_ENABLED)%'
+
+    # Порог (секунды). Минимум 0.01, по умолчанию 0.1.
+    threshold: 0.1
+
+    # Фильтры корневого спана, для которого включаем профилинг.
+    # Если задан allowed_* — соответствующий ignored_* игнорируется.
+    allowed_types: [server, consumer]
+    ignored_types: ~
+    allowed_subtypes: ~
+    ignored_subtypes: ~
+```
+
+Ключевые моменты:
+
+- `span.enabled`: включает регистрацию сервисов `SpanTracer`/`SpanInteractor`/`EventDispatcher`. Если `false`, регистрируются null-реализации (`NullSpanTracer`, `NullSpanInteractor`, `NullEventDispatcher`).
+- `span.enabled` и `span.tracing.enabled` влияют на сборку контейнера (регистрация сервисов и compiler passes), поэтому их следует задавать как обычные `true/false` (не placeholder).
+- `span.tracing.enabled`: включает листенеры HTTP/Console и автоинструментирование (Doctrine DBAL middleware, Symfony HttpClient, Guzzle, Symfony Messenger). Работает только если `span.enabled: true`.
+- `span.profiling.enabled`: включает профилинг через `ext-excimer` (если расширение отсутствует — используется `SpanNullProfiler`). Работает только если `span.enabled: true`.
+
+## Архитектура и концепции
 
 ### TracePool
 
-Может быть ситуация "наслаивания" Trace, например во время работы roadrunner контроллера или consumer:
+Трейсы хранятся в памяти стеком. Это позволяет корректно обрабатывать вложенные сценарии (например, CLI-команда запускает consumer):
 
-- Trace 1 создаётся - запуск cli команды.
-- Все новые спаны прикрепляются к Trace 1.
-- Trace 2 создаётся - получение сообщения из messenger.
-- Все новые спаны прикрепляются к Trace 2.
-- Сообщение обработано - Trace 2 завершается и диспатчится.
-- Все новые спаны прикрепляются к Trace 1.
-- Trace 3 создаётся - получение сообщения из messenger.
-- Все новые спаны прикрепляются к Trace 3.
-- Сообщение обработано - Trace 3 завершается и диспатчится.
-- Все новые спаны прикрепляются к Trace 1.
-- Команда завершена - Trace 1 завершается и диспатчится.
+1. CLI-команда запускает Trace 1.
+2. Сообщение Messenger создаёт Trace 2, который завершается и диспатчится по завершении обработки.
+3. Стек возвращается к Trace 1, цикл повторяется для следующих сообщений.
 
-Исходя из этого мы получаем, что Trace всегда создаётся для Main запросов Controller и Consumer, а для не Main запросов и Command Trace создаётся только если нет корневого Trace.
+`TracePool` реализует `ResettableInterface`, поэтому не держит ссылки между запросами в worker-сценариях.
 
-Для возможности проверки существования Trace нам нужно единое хранилище - TracePool.
+### Типизация и именование
 
-TracePool хранит стек в памяти. Для предотвращения утечек он реализует ResettableInterface.
+Бандл опирается на стандарты OpenTelemetry, Elastic Common Schema и Sentry.
 
-## Стандартные схемы типизации спанов и транзакций
-
-### OpenTelemetry
-
-OpenTelemetry сочетает роль спана (SpanKind) и семантические атрибуты.
-
-- SpanKind: INTERNAL, CLIENT, SERVER, PRODUCER, CONSUMER — определяет роль спана.
-- Semantic attributes: детали по доменам (HTTP/DB/Messaging/Exception/Network) в атрибуты; имя держим низкой кардинальности.
-- Status: OK | ERROR | UNSET.
-- Именование:
-  - server: `METHOD <route>`
-  - client: `METHOD <host>` или `METHOD <route>`
-  - db: `<OPERATION> <table|collection>`
-  - messaging: `<operation> <destination>`
-
-### ElasticAPM (Elastic Common Schema)
-
-ElasticAPM использует иерархию `type.subtype.action`.
-
-- Transactions: `request`, `messaging`, `background`, `cli`.
-- Spans: `db`, `external`, `cache`, `template`, `messaging`, `app` с соответствующим `subtype` и `action`.
-- Outcome: `success`, `failure`, `unknown`.
-- Именование и типизация:
-  - HTTP client: `type=external`, `subtype=http`, `action=GET|POST|...`, name: `GET <host>`.
-  - HTTP server: transaction `type=request`, name: `METHOD <route>`.
-  - DB: `type=db`, `subtype=<system>`, `action=query|execute|...`, name: `SELECT <table>`.
-  - Messaging: `type=messaging`, `subtype=<system>`, `action=send|receive|process`.
-
-### Sentry
-
-Sentry типизирует через поле `op`.
-
-- `op`: строка `category.subcategory` (например, `http.server`, `http.client`, `db.sql.query`, `queue.process`, `console.command`, `middleware.handle`).
-- Status: ориентируемся на HTTP/gRPC status_code — `<400` - `ok`, `4xx` - клиентские ошибки, `5xx` - `internal_error`.
-- Именование:
-  - Транзакции HTTP server: `name` по route, иначе `url`.
-  - Детали высокой кардинальности — в `description`, `data`, `tags` не в `name` или `op`.
-
-## Схема типизации SpanBundle
-
-Используется упрощенная схема `type` + `subtype`: проста для разработчиков, хорошо агрегируется и гибко маппится в целевые системы.
-
-Маппинг в целевые системы выполняется транспортами на стороне интеграций.
-
-### Использование наименований
-
-- Trace - без имени.
-- Span: `type` + `subtype` + низкокардинальное имя.
-- Рекомендации имён:
+- Trace создаётся без имени.
+- Span получает пару `type` + `subtype` и низкокардинальное имя.
+- Рекомендации по именованию:
   - HTTP server: `METHOD <route>`
   - HTTP client: `METHOD <host>`
   - DB: `<OPERATION> <table>`
   - Messaging: `<OPERATION> <destination>`
   - Console: `<command>`
-
-### Использование типов
-
-- HTTP: `server|client` + `http`
-- DB: `db` + `<system>` (например, `postgresql`)
-- Messaging: `producer|consumer` + `<system>` (например, `rabbitmq`, `kafka`)
-- Console: `console`
-- Internal/App/Profile: `internal` + `app|profile`
-
-### Дополнительный контекст
-
-Высококардинальные и протокольные детали помещаются в `SpanContext` для последующего маппинга в целевые системы.
+- Контекст высокой кардинальности хранится в `Roqmeu\SpanBundle\State\Context` и передаётся транспортами.
 
 ## Поддерживаемые интеграции
 
+### HTTP (Symfony HttpClient & Guzzle)
+
+- Автообёртка клиентов и ответов.
+- Типизация спанов как `client.http`.
+- Сбор HTTP-метаданных (метод, URI, статус, целевой хост/порт) и заполнение `service.target`.
+- Поддержка `HttpClientInterface::stream()` и потоковой обработки chunk'ов.
+
+### Symfony HTTP Server
+
+- `TracingRequestListener` создаёт root span для входящих HTTP-запросов.
+- Определяет имя транзакции по маршруту и выставляет `outcome` в зависимости от статуса ответа.
+
+### Console команды
+
+- `TracingCommandListener` создаёт и завершает трассы вокруг Symfony Console команд.
+- Имя транзакции совпадает с именем команды.
+
 ### Doctrine DBAL
 
-Автоматическое отслеживание SQL запросов через Doctrine DBAL Middleware.
+- Middleware перехватывает запросы, транзакции и prepared statements.
+- Заполняет тип `db.<driver>` и контекст (instance, statement, адрес сервера).
 
-**Что трассируется:**
-- SELECT, INSERT, UPDATE, DELETE, TRUNCATE, CREATE, DROP, ALTER запросы
-- Prepared statements (prepare + execute)
-- Транзакции (BEGIN, COMMIT, ROLLBACK)
+### Symfony Messenger
 
-**Собираемые метаданные:**
-- Тип БД (PostgreSQL, MySQL, SQLite и т.д.)
-- Имя базы данных
-- Адрес и порт сервера БД
-- SQL запрос (без параметров для безопасности)
-- Имя таблицы (извлекается из SQL)
+- Producer/consumer middleware для sync и Redis/AMQP драйверов.
+- Создаёт `producer` и `consumer` спаны, нормализует имена очередей и переносит контекст цели.
 
-**Именование спанов:**
-- Формат: `<OPERATION> <table>` (например, `SELECT users`, `UPDATE orders`)
-- Для сложных запросов: `<OPERATION> <database_name>`
-- Транзакции: `BEGIN TRANSACTION`, `COMMIT`, `ROLLBACK`
+## Экспорт и события
 
-**Типизация:**
-- type: `db`
-- subtype: `postgresql` | `mysql` | `sqlite` | `doctrine`
+Все интеграции сообщают о жизненном цикле через события:
 
-## На будущее
+- `TraceStartedEvent` / `TraceEndedEvent`
+- `SpanStartedEvent` / `SpanEndedEvent`
 
-- Добавить контекст в Messenger
-- Добавить RabbitMqBundle интеграцию
-- Переделать RootSpan в Transaction
-- Перенести Dto в src и переименовать
-- Перенести Pool в src или State
-- Добавить прокидывание TraceId через GuzzleHttpClient, SymfonyHttpClient, SymfonyMessenger, RabbitMqBundle
-- Добавить в TracingProducerMiddleware поддержку отправки в несколько каналов
+Стандартная реализация `Roqmeu\SpanBundle\Transport\EventDispatcher\SymfonyEventDispatcher` проксирует события в `Symfony\Contracts\EventDispatcher\EventDispatcherInterface`.
+
+### Elastic APM Bridge
+
+`Roqmeu\SpanBundle\Bridge\ElasticApmBridge` подписан на `TraceEndedEvent` и экспортирует весь Trace в Elastic APM, соблюдая требования агента:
+
+- Корневой спан преобразуется в транзакцию с корректным `type`, `name`, `outcome` и `result`.
+- Дочерние спаны создаются через `beginChildSpan`, учитывая low-cardinality имя, тип и сабтайп.
+- Контекст HTTP/DB/Messaging маппится в `destination` и `service.target`.
+
+Если нужна другая система экспорта, подпишитесь на события и реализуйте собственный транспорт.
+
+## Локальная разработка
+
+В репозитории присутствует `docker-compose.yml` и `Makefile`, упрощающие запуск окружения:
+
+- `.env` содержит версии PHP и библиотек.
+- `make up` — поднимает окружение (PHP + PostgreSQL + Redis).
+- `make init` - устанавливает указанные в `.env` версии библиотек.
+- `make reup` — перезапускает контейнеры с пересозданием.
+- `make rebi` — пересобирает образ PHP и обновляет контейнеры.
+- `make sh` / `make shr` — открывает shell внутри контейнера от имени `www-data` или `root`.
+
+## Тестирование и качество
+
+- `make lint` — запускает Easy Coding Standard (`ecs`).
+- `make stan` — запускает PHPStan с проектной конфигурацией.
+- `make test` — обновляет автозагрузчик и запускает Codeception функциональные тесты.
+- `make chain` — выполняет полный цикл: очистка кеша, линтер, статический анализ, тесты.
+
+Конфигурация Codeception лежит в `codeception.yml`, тестовые фикстуры — в `test/fixture`, функциональные сценарии — в `test/functional`.
+
+## План развития
+
+- Добавить расширенный контекст в интеграцию Messenger.
+- Реализовать интеграцию с `RabbitMqBundle`.
+- Добавить прокидывание и получение `trace-id` в клиенты (Guzzle, Symfony HttpClient, Messenger и т.д.).
+- Поддержать использование `trace-id` в транспортах.
+- Добавить поддержку Doctrine DBAL `^4.0`.
+- Добавить поддержку многоканальной отправки в `TracingProducerMiddleware`.

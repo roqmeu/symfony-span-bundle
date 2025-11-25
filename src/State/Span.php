@@ -8,95 +8,244 @@ use Roqmeu\SpanBundle\SpanBundle;
 
 class Span
 {
-    public string $name;
+    protected string $id;
+
+    protected string $name;
 
     /**
      * @var string
      *
      * @see SpanBundle::SPAN_TYPE_*
      */
-    public string $type;
+    protected string $type;
 
     /**
-     * @var string
+     * @var string|null
      *
      * @see SpanBundle::SPAN_SUBTYPE_*
      */
-    public string $subtype;
+    protected ?string $subtype;
 
     /**
-     * @var float start time in seconds
+     * @var float|null start timestamp with microseconds
      */
-    public float $start;
+    protected ?float $start = null;
 
     /**
-     * @var float|null end time in seconds
+     * @var float|null end timestamp with microseconds
      */
-    public ?float $end = null;
+    protected ?float $end = null;
 
-    public ?Transaction $transaction = null;
+    protected ?Trace $trace = null;
 
-    public ?Span $parent = null;
+    protected ?Span $parent = null;
 
     /**
-     * @var Span[]
+     * @var array<int, Span>
      */
-    public array $children = [];
+    protected array $children = [];
 
-    public ?bool $successful = null;
+    protected bool $successful = true;
 
-    public bool $canceled = false;
+    protected ?\Throwable $error = null;
 
-    public SpanContext $context;
+    public Context $context;
 
-    public ?\Throwable $error = null;
+    public function __construct(string $name, string $type, string $subtype = null)
+    {
+        $this->id = \bin2hex(\random_bytes(16));
 
-    public function __construct(
-        string $name = '',
-        string $type = '',
-        string $subtype = '',
-        ?float $start = null
-    ) {
         $this->name = $name;
         $this->type = $type;
         $this->subtype = $subtype;
 
-        $this->start = $start ?? microtime(true);
-
-        $this->context = new SpanContext();
+        $this->context = new Context();
     }
 
-    public function addCurrentSpan(Span $span): void
+    public function getId(): string
     {
-        $span->transaction = $this->transaction;
-        $span->parent = $this;
-
-        $this->children[] = $span;
-
-        if ($this->transaction !== null) {
-            $this->transaction->currentSpan = $span;
-        }
+        return $this->id;
     }
 
-    public function addSpan(Span $span): void
+    public function getName(): string
     {
-        $span->transaction = $this->transaction;
-        $span->parent = $this;
-
-        $this->children[] = $span;
+        return $this->name;
     }
 
-    public function end(?float $end = null): void
+    public function setName(string $name): void
     {
-        $this->end = $end ?? microtime(true);
-
-        if ($this->transaction !== null && $this === $this->transaction->currentSpan) {
-            $this->transaction->currentSpan = $this->parent;
-        }
+        $this->name = $name;
     }
 
-    public function ended(): bool
+    public function getType(): string
+    {
+        return $this->type;
+    }
+
+    public function setType(string $type): void
+    {
+        $this->type = $type;
+    }
+
+    public function getSubtype(): ?string
+    {
+        return $this->subtype;
+    }
+
+    public function setSubtype(?string $subtype): void
+    {
+        $this->subtype = $subtype;
+    }
+
+    public function getStartTime(): ?float
+    {
+        return $this->start;
+    }
+
+    public function setStartTime(?float $startTime): void
+    {
+        $this->start = $startTime;
+    }
+
+    public function getEndTime(): ?float
+    {
+        return $this->end;
+    }
+
+    public function setEndTime(?float $endTime): void
+    {
+        $this->end = $endTime;
+    }
+
+    public function isEnded(): bool
     {
         return $this->end !== null;
+    }
+
+    public function getTrace(): ?Trace
+    {
+        return $this->trace;
+    }
+
+    public function setTrace(?Trace $trace): void
+    {
+        $this->trace = $trace;
+    }
+
+    public function getParent(): ?Span
+    {
+        return $this->parent;
+    }
+
+    public function setParent(Span $span): void
+    {
+        $this->parent = $span;
+    }
+
+    /**
+     * @return array<int, Span>
+     */
+    public function getChildren(): array
+    {
+        return $this->children;
+    }
+
+    public function addChild(Span $span): void
+    {
+        $span->setParent($this);
+
+        $span->setTrace($this->getTrace());
+
+        $this->children[] = $span;
+    }
+
+    /**
+     * Iterate children spans in pre-order DFS
+     *
+     * @return \Generator<Span>
+     */
+    public function iterateChildrenDfs(): \Generator
+    {
+        $stack = \array_reverse($this->children);
+
+        while ($stack !== []) {
+            /** @var Span $current */
+            $current = \array_pop($stack);
+
+            yield $current;
+
+            $children = $current->getChildren();
+
+            for ($i = \count($children) - 1; $i >= 0; --$i) {
+                $stack[] = $children[$i];
+            }
+        }
+    }
+
+    /**
+     * Iterate children spans in Euler tour order (enter + exit)
+     *
+     * @return \Generator<Span>
+     */
+    public function iterateChildrenEuler(): \Generator
+    {
+        $stack = \array_reverse($this->children);
+
+        $previous = $this;
+
+        while ($stack !== []) {
+            $current = \end($stack);
+
+            yield $current;
+
+            $children = $current->getChildren();
+            $childrenCount = \count($children);
+
+            if ($childrenCount === 0) {
+                yield \array_pop($stack);
+            } elseif ($current === $previous->getParent()) {
+                \array_pop($stack);
+            } else {
+                for ($i = $childrenCount - 1; $i >= 0; --$i) {
+                    $stack[] = $children[$i];
+                }
+            }
+
+            $previous = $current;
+        }
+    }
+
+    public function isSuccessful(): bool
+    {
+        return $this->successful;
+    }
+
+    public function setSuccessful(bool $successful): void
+    {
+        $this->successful = $successful;
+    }
+
+    public function setSuccessfulIf(bool $successful): void
+    {
+        if ($this->successful) {
+            $this->successful = $successful;
+        }
+    }
+
+    public function getError(): ?\Throwable
+    {
+        return $this->error;
+    }
+
+    public function setError(\Throwable $error): void
+    {
+        $this->error = $error;
+
+        $this->successful = false;
+    }
+
+    public function hasError(): bool
+    {
+        return $this->error !== null;
     }
 }

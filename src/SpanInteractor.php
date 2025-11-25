@@ -5,25 +5,19 @@ declare(strict_types=1);
 namespace Roqmeu\SpanBundle;
 
 use Roqmeu\SpanBundle\State\Span;
-use Roqmeu\SpanBundle\State\Transaction;
+use Roqmeu\SpanBundle\State\Trace;
 
 interface SpanInteractor
 {
-    public function beginCurrentTransaction(Transaction $transaction, ?int $idx = null): int;
+    public function startActiveTrace(Trace $trace): void;
 
-    public function beginTransaction(Transaction $transaction, ?int $idx = null): int;
+    public function startTrace(Trace $trace): void;
 
-    public function getCurrentTransaction(): ?Transaction;
+    public function getActiveTrace(): ?Trace;
 
-    public function getTransaction(int $idx): ?Transaction;
+    public function endTrace(Trace $trace): void;
 
-    public function endTransaction(?Transaction $trace): void;
+    public function startSpan(Span $span): void;
 
-    public function beginCurrentSpan(): ?Span;
-
-    public function beginSpan(): ?Span;
-
-    public function getCurrentSpan(): ?Span;
-
-    public function endSpan(?Span $span): void;
+    public function endSpan(Span $span): void;
 }

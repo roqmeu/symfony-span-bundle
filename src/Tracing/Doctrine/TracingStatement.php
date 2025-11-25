@@ -8,36 +8,28 @@ use Doctrine\DBAL\Driver\Result;
 use Doctrine\DBAL\Driver\Statement;
 use Doctrine\DBAL\ParameterType;
 use Roqmeu\SpanBundle\SpanBundle;
-use Roqmeu\SpanBundle\State\TransactionPool;
-use Roqmeu\SpanBundle\Tracing\SpanTracingTrait;
-use Roqmeu\SpanBundle\Transport\Dispatcher\Dispatcher;
+use Roqmeu\SpanBundle\SpanTracer;
+use Roqmeu\SpanBundle\State\Span;
 
 class TracingStatement implements Statement
 {
-    use SpanTracingTrait;
     use DbalTracingTrait;
+
+    private SpanTracer $spanTracer;
 
     private Statement $statement;
 
     private string $sql;
 
-    public function __construct(
-        Dispatcher $dispatcher,
-        TransactionPool $tracePool,
-        Statement $statement,
-        string $sql,
-        array $connectionParams,
-        string $driverType
-    ) {
+    public function __construct(SpanTracer $spanTracer, Statement $statement, string $sql, array $connectionParams, string $databaseType, string $databaseName)
+    {
+        $this->spanTracer = $spanTracer;
         $this->statement = $statement;
-        $this->dispatcher = $dispatcher;
-
-        $this->tracePool = $tracePool;
         $this->sql = $sql;
 
         $this->connectionParams = $connectionParams;
-        $this->driverType = $driverType;
-        $this->databaseName = $connectionParams['dbname'] ?? $connectionParams['path'] ?? 'unknown';
+        $this->databaseType = $databaseType;
+        $this->databaseName = $databaseName;
     }
 
     public function bindParam($param, &$variable, $type = ParameterType::STRING, $length = null): bool
@@ -52,32 +44,24 @@ class TracingStatement implements Statement
 
     public function execute($params = null): Result
     {
-        $parent = $this->tracePool->getCurrentSpan();
-
-        if ($parent === null) {
+        if (!$this->spanTracer->hasActiveTrace()) {
             return $this->statement->execute($params);
         }
 
-        $spanName = $this->buildSpanName($this->sql);
-        $spanSubtype = $this->getSpanSubtype();
-
-        $span = $this->beginSpan(
-            $parent,
-            $spanName,
-            SpanBundle::SPAN_TYPE_DB,
-            $spanSubtype
-        );
+        $span = new Span($this->buildSpanName($this->sql), SpanBundle::SPAN_TYPE_DB, $this->databaseType);
 
         $this->fillSpanContext($span, $this->sql);
+
+        $this->spanTracer->startSpan($span);
 
         try {
             return $this->statement->execute($params);
         } catch (\Throwable $error) {
-            $this->errorSpan($span, $error);
+            $span->setError($error);
 
             throw $error;
         } finally {
-            $this->endSpan($span);
+            $this->spanTracer->endSpan($span);
         }
     }
 }

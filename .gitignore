@@ -5,9 +5,12 @@
 
 # Local
 /.idea/
+/.run/
 /var/
 /vendor/
 /test/**/_*
+
+/.env.local
 
 /auth.json
 /composer.lock

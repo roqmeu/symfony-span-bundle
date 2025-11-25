@@ -1,0 +1,56 @@
+name: "symfony-span-bundle"
+
+services:
+  php:
+    user: www-data
+    build:
+      dockerfile: .docker/php.Dockerfile
+      context: .
+      args:
+        PHP_VERSION: "${PHP_VERSION?}"
+    environment:
+      GITHUB_TOKEN: "${GITHUB_TOKEN?}"
+      SYMFONY_VERSION: "${SYMFONY_VERSION?}"
+      PHP_IDE_CONFIG: "serverName=symfony-span-bundle.lan"
+    volumes:
+      - .:/var/www/html
+    entrypoint: sleep infinity
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgsql:
+        condition: service_healthy
+
+  rabbitmq:
+    image: rabbitmq:4.1
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbitmq
+      RABBITMQ_DEFAULT_PASS: rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "sleep 2"]
+      interval: 1s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    user: redis
+    image: redis:7.4
+    healthcheck:
+      test: ["CMD-SHELL", "sleep 2"]
+      interval: 1s
+      timeout: 3s
+      retries: 10
+
+  pgsql:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: symfony_span_bundle
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "sleep 2"]
+      interval: 1s
+      timeout: 3s
+      retries: 10

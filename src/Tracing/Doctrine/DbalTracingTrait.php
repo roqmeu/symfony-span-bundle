@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Roqmeu\SpanBundle\Tracing\Doctrine;
 
+use Doctrine\DBAL\Driver;
 use Roqmeu\SpanBundle\SpanBundle;
 use Roqmeu\SpanBundle\State\Span;
 
 trait DbalTracingTrait
 {
     private array $connectionParams;
-    private string $driverType;
+
+    private string $databaseType;
+
     private string $databaseName;
 
     private function buildSpanName(string $sql): string
@@ -28,6 +31,19 @@ trait DbalTracingTrait
         }
 
         return "QUERY {$this->databaseName}";
+    }
+
+    private function cleanTableName(string $tableName): string
+    {
+        $tableName = \trim($tableName, '"`\'');
+
+        if (\strpos($tableName, '.') !== false) {
+            $parts = \explode('.', $tableName);
+
+            return $parts[\array_key_last($parts)];
+        }
+
+        return $tableName;
     }
 
     private function extractTableName(string $sql, string $operation): ?string
@@ -55,63 +71,77 @@ trait DbalTracingTrait
                 $result = false;
         }
 
-        if ($result === 1) {
+        if ($result === 1 && \count($matches) !== 0) {
             return $this->cleanTableName($matches[1]);
         }
 
         return null;
     }
 
-    private function cleanTableName(string $tableName): string
-    {
-        $tableName = \trim($tableName, '"`\'');
-
-        // TODO replace to substr
-        if (\strpos($tableName, '.') !== false) {
-            $parts = \explode('.', $tableName);
-
-            return $parts[\array_key_last($parts)];
-        }
-
-        return $tableName;
-    }
-
-    private function getSpanSubtype(): string
-    {
-        switch ($this->driverType) {
-            case 'postgresql':
-                return SpanBundle::SPAN_SUBTYPE_POSTGRESQL;
-            case 'mysql':
-                return SpanBundle::SPAN_SUBTYPE_MYSQL;
-            default:
-                return SpanBundle::SPAN_SUBTYPE_DOCTRINE;
-        }
-    }
-
     private function fillSpanContext(Span $span, string $sql): void
     {
-        $span->context->db = [
-            'system' => $this->driverType,
-            'name' => $this->databaseName,
-        ];
-
         if (isset($this->connectionParams['host']) && $this->connectionParams['host'] !== '') {
             $span->context->server = [
-                'address' => $this->connectionParams['host'],
+                'host' => $this->connectionParams['host'],
             ];
 
-            if (isset($this->connectionParams['port'])) {
+            if (isset($this->connectionParams['port']) && $this->connectionParams['port'] !== '') {
                 $span->context->server['port'] = (int)$this->connectionParams['port'];
             }
         }
 
         $span->context->target = [
-            'type' => $this->driverType,
+            'type' => $this->databaseType,
             'name' => $this->databaseName,
         ];
 
-        $span->context->db_statement = $sql;
-        $span->context->db_type = 'sql';
-        $span->context->db_instance = $this->databaseName;
+        $span->context->db = [
+            'instance' => $this->databaseName,
+            'name' => $this->databaseName,
+            'statement' => $sql,
+            'system' => $this->databaseType,
+            'type' => 'sql',
+        ];
+    }
+
+    private function determineDatabaseType(Driver $driver): string
+    {
+        try {
+            $platform = $driver->getDatabasePlatform();
+
+            // TODO getName deprecated in DBAL 3.x - Identify platforms by their class.
+            switch ($platform->getName()) {
+                case 'mssql':
+                    return SpanBundle::SPAN_SUBTYPE_MSSQL;
+                case 'mariadb':
+                case 'mysql':
+                    return SpanBundle::SPAN_SUBTYPE_MYSQL;
+                case 'oracle':
+                    return SpanBundle::SPAN_SUBTYPE_ORACLE;
+                case 'postgresql':
+                    return SpanBundle::SPAN_SUBTYPE_POSTGRESQL;
+                case 'sqlite':
+                    return SpanBundle::SPAN_SUBTYPE_SQLITE;
+                default:
+                    return SpanBundle::SPAN_SUBTYPE_DOCTRINE;
+            }
+        } catch (\Throwable $e) {
+            return SpanBundle::SPAN_SUBTYPE_DOCTRINE;
+        }
+    }
+
+    private function determineDatabaseName(array $connectionParams): string
+    {
+        return $connectionParams['dbname'] ?? $connectionParams['path'] ?? SpanBundle::UNKNOWN;
+    }
+
+    private function determineHost(array $connectionParams): ?string
+    {
+        return ($connectionParams['host'] ?? null) ?: null;
+    }
+
+    private function determinePort(array $connectionParams): ?int
+    {
+        return ((int)($connectionParams['port'] ?? null)) ?: null;
     }
 }

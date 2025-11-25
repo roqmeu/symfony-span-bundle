@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Roqmeu\SpanBundle\Tracing\Command;
 
 use Roqmeu\SpanBundle\SpanBundle;
-use Roqmeu\SpanBundle\State\SpanPool;
-use Roqmeu\SpanBundle\State\TransactionPool;
-use Roqmeu\SpanBundle\Tracing\TransactionTracingTrait;
-use Roqmeu\SpanBundle\Transport\Dispatcher\Dispatcher;
+use Roqmeu\SpanBundle\SpanTracer;
+use Roqmeu\SpanBundle\SpanTracerAwareTrait;
+use Roqmeu\SpanBundle\State\Span;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\Console\Event\ConsoleCommandEvent;
@@ -17,22 +16,22 @@ use Symfony\Component\Console\Event\ConsoleTerminateEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Kernel;
 use Symfony\Component\HttpKernel\KernelInterface;
+use Symfony\Contracts\Service\ResetInterface;
 
-class TracingCommandListener implements EventSubscriberInterface
+class TracingCommandListener implements EventSubscriberInterface, ResetInterface
 {
-    use TransactionTracingTrait;
+    use SpanTracerAwareTrait;
 
     private KernelInterface $kernel;
 
-    public function __construct(
-        Dispatcher $dispatcher,
-        SpanPool $spanPool,
-        TransactionPool $tracePool,
-        KernelInterface $kernel
-    ) {
-        $this->dispatcher = $dispatcher;
-        $this->spanPool = $spanPool;
-        $this->tracePool = $tracePool;
+    /**
+     * @var array<int, Span>
+     */
+    public array $spanPool = [];
+
+    public function __construct(SpanTracer $spanTracer, KernelInterface $kernel)
+    {
+        $this->spanTracer = $spanTracer;
         $this->kernel = $kernel;
     }
 
@@ -53,14 +52,9 @@ class TracingCommandListener implements EventSubscriberInterface
             return;
         }
 
-        $span = $this->transactionStart(
-            $this->getSpanId($command),
-            $command->getName(),
-            SpanBundle::TRANSACTION_TYPE_CONSOLE,
-            ''
-        );
+        $span = new Span($command->getName() ?? SpanBundle::UNKNOWN, SpanBundle::SPAN_TYPE_CONSOLE);
 
-        if (extension_loaded('posix')) {
+        if (\extension_loaded('posix')) {
             $span->context->process = [
                 'executable' => \PHP_BINARY,
                 'interactive' => \PHP_SAPI === 'cli' && (\posix_isatty(\STDIN) || \posix_isatty(\STDOUT)),
@@ -80,13 +74,21 @@ class TracingCommandListener implements EventSubscriberInterface
         $span->context->framework = [
             'debug' => $this->kernel->isDebug(),
             'environment' => $this->kernel->getEnvironment(),
-            'framework' => 'symfony',
+            'name' => 'symfony',
             'version' => Kernel::VERSION,
         ];
 
         $span->context->command = [
             'name' => $command->getName() ?? SpanBundle::UNKNOWN,
         ];
+
+        $this->spanPool[$this->getCommandId($command)] = $span;
+
+        if ($this->spanTracer->hasActiveTrace()) {
+            $this->spanTracer->startSpan($span);
+        } else {
+            $this->spanTracer->startSpanWithTrace($span);
+        }
     }
 
     public function onConsoleTerminate(ConsoleTerminateEvent $event): void
@@ -97,18 +99,15 @@ class TracingCommandListener implements EventSubscriberInterface
             return;
         }
 
-        $id = $this->getSpanId($command);
-        $span = $this->getTransaction($id);
+        $span = $this->spanPool[$this->getCommandId($command)] ?? null;
 
         if ($span === null) {
             return;
         }
 
-        if ($span->successful === null) {
-            $span->successful = $event->getExitCode() === Command::SUCCESS;
-        }
+        $span->setSuccessfulIf($event->getExitCode() === Command::SUCCESS);
 
-        $this->transactionEnd($id);
+        $this->spanTracer->endSpan($span);
     }
 
     public function onConsoleError(ConsoleErrorEvent $event): void
@@ -119,11 +118,22 @@ class TracingCommandListener implements EventSubscriberInterface
             return;
         }
 
-        $this->transactionError($this->getSpanId($command), $event->getError());
+        $span = $this->spanPool[$this->getCommandId($command)] ?? null;
+
+        if ($span === null) {
+            return;
+        }
+
+        $span->setError($event->getError());
     }
 
-    private function getSpanId(Command $command): int
+    private function getCommandId(Command $command): int
     {
         return spl_object_id($command);
+    }
+
+    public function reset(): void
+    {
+        $this->spanPool = [];
     }
 }

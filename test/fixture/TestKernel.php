@@ -12,14 +12,19 @@ use Roqmeu\SpanBundle\Test\Fixture\Command\CommandOk;
 use Roqmeu\SpanBundle\Test\Fixture\Command\DbalOkCommand;
 use Roqmeu\SpanBundle\Test\Fixture\Command\GuzzleOkCommand;
 use Roqmeu\SpanBundle\Test\Fixture\Command\HttpClientOkCommand;
+use Roqmeu\SpanBundle\Test\Fixture\Command\MessengerRabbitMqFailCommand;
+use Roqmeu\SpanBundle\Test\Fixture\Command\MessengerRabbitMqOkCommand;
 use Roqmeu\SpanBundle\Test\Fixture\Command\MessengerRedisOkCommand;
 use Roqmeu\SpanBundle\Test\Fixture\Command\MessengerSyncFailCommand;
 use Roqmeu\SpanBundle\Test\Fixture\Command\MessengerSyncOkCommand;
+use Roqmeu\SpanBundle\Test\Fixture\Command\ProfilerCommand;
 use Roqmeu\SpanBundle\Test\Fixture\Messenger\FailEvent;
 use Roqmeu\SpanBundle\Test\Fixture\Messenger\FailEventHandler;
+use Roqmeu\SpanBundle\Test\Fixture\Messenger\FailEventRabbitMq;
 use Roqmeu\SpanBundle\Test\Fixture\Messenger\FailEventSync;
 use Roqmeu\SpanBundle\Test\Fixture\Messenger\OkEvent;
 use Roqmeu\SpanBundle\Test\Fixture\Messenger\OkEventHandler;
+use Roqmeu\SpanBundle\Test\Fixture\Messenger\OkEventRabbitMq;
 use Roqmeu\SpanBundle\Test\Fixture\Messenger\OkEventRedis;
 use Roqmeu\SpanBundle\Test\Fixture\Messenger\OkEventSync;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
@@ -49,6 +54,11 @@ class TestKernel extends Kernel
         LoaderInterface $loader,
         ContainerBuilder $builder = null
     ): void {
+        $parameters = $c->parameters();
+
+        $parameters->set('container.dumper.inline_factories', true);
+        $parameters->set('.container.dumper.inline_factories', true);
+
         $c->extension('framework', [
             'secret' => 'SECRET',
             'test' => true,
@@ -56,6 +66,22 @@ class TestKernel extends Kernel
                 'enabled' => true,
                 'transports' => [
                     'transport-sync' => ['dsn' => 'sync://'],
+                    'transport-rabbitmq' => [
+                        'dsn' => 'amqp://rabbitmq:rabbitmq@rabbitmq:5672/',
+                        'options' => [
+                            'queues' => [
+                                'rabbitmq_queue_name' => [],
+                            ],
+                            'exchange' => [
+                                'name' => 'rabbitmq_exchange_name'
+                            ]
+                        ],
+                        'retry_strategy' => [
+                            'max_retries' => 2,
+                            'delay' => 1000,
+                            'multiplier' => 2,
+                        ],
+                    ],
                     'transport-redis' => [
                         'dsn' => 'redis://redis:6379',
                         'options' => [
@@ -66,6 +92,8 @@ class TestKernel extends Kernel
                 'routing' => [
                     OkEventSync::class => 'transport-sync',
                     FailEventSync::class => 'transport-sync',
+                    OkEventRabbitMq::class => 'transport-rabbitmq',
+                    FailEventRabbitMq::class => 'transport-rabbitmq',
                     OkEventRedis::class => 'transport-redis',
                 ],
             ],
@@ -83,13 +111,24 @@ class TestKernel extends Kernel
             'dbal' => [
                 'connections' => [
                     'default' => [
-                        'url' => 'pgsql://postgres:postgres@pgsql:5432/spanbundle',
+                        'url' => 'pgsql://postgres:postgres@pgsql:5432/symfony_span_bundle',
                     ],
                     'secondary' => [
-                        'url' => 'pgsql://postgres:postgres@pgsql:5432/spanbundle',
+                        'url' => 'pgsql://postgres:postgres@pgsql:5432/symfony_span_bundle',
                     ],
                 ],
             ],
+        ]);
+
+        $c->extension('span', [
+            'enabled' => true,
+            'tracing' => [
+                'enabled' => true,
+            ],
+            'profiling' => [
+                'enabled' => '%env(bool:default::SPAN_PROFILER_ENABLED)%',
+                'threshold' => 0.01,
+            ]
         ]);
 
         $services = $c->services();
@@ -111,7 +150,14 @@ class TestKernel extends Kernel
             ->tag('console.command');
         $services->set(MessengerSyncFailCommand::class)
             ->tag('console.command');
+        $services->set(MessengerRabbitMqOkCommand::class)
+            ->tag('console.command');
+        $services->set(MessengerRabbitMqFailCommand::class)
+            ->tag('console.command');
         $services->set(MessengerRedisOkCommand::class)
+            ->tag('console.command');
+
+        $services->set(ProfilerCommand::class)
             ->tag('console.command');
 
         $services->set(HttpClientOkCommand::class)
@@ -133,7 +179,7 @@ class TestKernel extends Kernel
 
     public function getProjectDir(): string
     {
-        return dirname(__DIR__, 2);
+        return \dirname(__DIR__, 2);
     }
 
     public function getCacheDir(): string

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Roqmeu\SpanBundle\DependencyInjection\Compiler;
 
+use Roqmeu\SpanBundle\DependencyInjection\SpanExtension;
 use Roqmeu\SpanBundle\Tracing\HttpClient\TracingHttpClientV5;
 use Roqmeu\SpanBundle\Tracing\HttpClient\TracingHttpClientV6;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
@@ -17,6 +18,12 @@ class SymfonyHttpClientPass implements CompilerPassInterface
 {
     public function process(ContainerBuilder $container): void
     {
+        $config = SpanExtension::getConfig($container);
+
+        if ($config === null || $config['enabled'] !== true || $config['tracing_enabled'] !== true) {
+            return;
+        }
+
         if (!\interface_exists('Symfony\Contracts\HttpClient\HttpClientInterface')) {
             return;
         }

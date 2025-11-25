@@ -1,15 +1,18 @@
 namespace: Roqmeu\SpanBundle\Test
 support_namespace: Support
 actor_suffix: Tester
+
 paths:
-  tests: test
-  output: test/_output
-  data: test/_data
-  support: test/support
-  envs: test/_envs
+    tests: test
+    output: test/_output
+    data: test/_data
+    support: test/support
+    envs: test/_envs
+
 settings:
-  colors: true
-  lint: true
+    colors: false
+    shuffle: false
+
 extensions:
-  enabled:
-    - Codeception\Extension\RunFailed
+    enabled:
+        - Codeception\Extension\RunFailed

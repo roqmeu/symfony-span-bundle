@@ -10,9 +10,8 @@ class SpanStartedEvent
 {
     public Span $span;
 
-    public function __construct(
-        Span $span
-    ) {
+    public function __construct(Span $span)
+    {
         $this->span = $span;
     }
 }

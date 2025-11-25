@@ -6,18 +6,17 @@ namespace Roqmeu\SpanBundle\Profiling;
 
 use Psr\Log\LoggerInterface;
 use Roqmeu\SpanBundle\SpanBundle;
+use Roqmeu\SpanBundle\SpanTracer;
+use Roqmeu\SpanBundle\SpanTracerAwareTrait;
 use Roqmeu\SpanBundle\State\Span;
-use Roqmeu\SpanBundle\State\TransactionPool;
-use Roqmeu\SpanBundle\Transport\Dispatcher\Dispatcher;
 use Symfony\Contracts\Service\ResetInterface;
 
 class SpanExcimerProfiler implements SpanProfiler, ResetInterface
 {
+    use SpanTracerAwareTrait;
+
     private const MAX_DEPTH = 64;
     private const MAX_STACKTRACE = 32;
-
-    private Dispatcher $dispatcher;
-    private TransactionPool $tracePool;
 
     private ?LoggerInterface $logger;
 
@@ -29,14 +28,9 @@ class SpanExcimerProfiler implements SpanProfiler, ResetInterface
     /** @var float[] */
     private array $profilersStarts = [];
 
-    public function __construct(
-        Dispatcher $dispatcher,
-        TransactionPool $tracePool,
-        ?LoggerInterface $logger,
-        float $period
-    ) {
-        $this->dispatcher = $dispatcher;
-        $this->tracePool = $tracePool;
+    public function __construct(SpanTracer $spanTracer, ?LoggerInterface $logger, float $period)
+    {
+        $this->spanTracer = $spanTracer;
         $this->logger = $logger;
         $this->period = $period;
     }
@@ -45,6 +39,11 @@ class SpanExcimerProfiler implements SpanProfiler, ResetInterface
     {
         $this->profilers = [];
         $this->profilersStarts = [];
+    }
+
+    public function has(string $name): bool
+    {
+        return isset($this->profilers[$name]);
     }
 
     public function start(string $name): void
@@ -112,9 +111,7 @@ class SpanExcimerProfiler implements SpanProfiler, ResetInterface
             return;
         }
 
-        $parent = $this->tracePool->current;
-
-        if ($parent === null) {
+        if (!$this->spanTracer->hasActiveTrace()) {
             return;
         }
 
@@ -122,18 +119,18 @@ class SpanExcimerProfiler implements SpanProfiler, ResetInterface
 
         unset($this->profilers[$name], $this->profilersStarts[$name]);
 
-        if ($span === null) {
+        if ($span === null || $span->getChildren() === []) {
             return;
         }
 
-        $this->dispatcher->spanStarted($span);
+        $this->spanTracer->startSpan($span);
 
-        foreach ($span->children as $child) {
-            $this->dispatcher->spanStarted($child);
-            $this->dispatcher->spanFinished($child);
+        foreach ($span->getChildren() as $childSpan) {
+            $this->spanTracer->startSpan($childSpan);
+            $this->spanTracer->endSpan($childSpan);
         }
 
-        $this->dispatcher->spanFinished($span);
+        $this->spanTracer->endSpan($span);
     }
 
     private function speedscopeToSpan(array $speedscopeData, float $start): ?Span
@@ -149,7 +146,7 @@ class SpanExcimerProfiler implements SpanProfiler, ResetInterface
         $samplesCount = \count($samples);
 
         $parent = new Span('SpanProfiler', SpanBundle::SPAN_TYPE_INTERNAL, SpanBundle::SPAN_SUBTYPE_PROFILE);
-        $parent->start = $start;
+        $parent->setStartTime($start);
 
         $nextIdx = 0;
         $nextSample = $samples[$nextIdx];
@@ -172,7 +169,9 @@ class SpanExcimerProfiler implements SpanProfiler, ResetInterface
                 }
             }
 
-            for ($nextIdx = $idx + 1; $nextIdx < $samplesCount; $nextIdx++) {
+            $nextIdx = $idx + 1;
+
+            for (; $nextIdx < $samplesCount; $nextIdx++) {
                 $nextSample = $samples[$nextIdx];
                 $nextNameIdx = $nextSample[\array_key_last($nextSample)];
 
@@ -186,25 +185,22 @@ class SpanExcimerProfiler implements SpanProfiler, ResetInterface
             $duration *= 0.001 * 0.001 * 0.001;
 
             if ($duration > $this->period) {
-                $span = new Span(
-                    $frames[$nameIdx]['name'],
-                    SpanBundle::SPAN_TYPE_INTERNAL,
-                    SpanBundle::SPAN_SUBTYPE_PROFILE
-                );
-                $span->start = $start;
+                $span = new Span($frames[$nameIdx]['name'], SpanBundle::SPAN_TYPE_INTERNAL, SpanBundle::SPAN_SUBTYPE_PROFILE);
+
+                $span->setStartTime($start);
                 $span->context->profile = ['stacktrace' => $stacktrace];
 
-                $parent->addSpan($span);
+                $parent->addChild($span);
 
                 $start += $duration;
 
-                $span->end($start);
+                $span->setEndTime($start);
             } else {
                 $start += $duration;
             }
         } while ($nextIdx < $samplesCount);
 
-        $parent->end($start);
+        $parent->setEndTime($start);
 
         return $parent;
     }

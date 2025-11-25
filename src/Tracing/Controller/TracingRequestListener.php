@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Roqmeu\SpanBundle\Tracing\Controller;
 
 use Roqmeu\SpanBundle\SpanBundle;
-use Roqmeu\SpanBundle\State\SpanPool;
-use Roqmeu\SpanBundle\State\TransactionPool;
-use Roqmeu\SpanBundle\Tracing\TransactionTracingTrait;
-use Roqmeu\SpanBundle\Transport\Dispatcher\Dispatcher;
+use Roqmeu\SpanBundle\SpanTracer;
+use Roqmeu\SpanBundle\SpanTracerAwareTrait;
+use Roqmeu\SpanBundle\State\Span;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
@@ -16,20 +15,21 @@ use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Routing\Route;
+use Symfony\Contracts\Service\ResetInterface;
 
-class TracingRequestListener implements EventSubscriberInterface
+class TracingRequestListener implements EventSubscriberInterface, ResetInterface
 {
-    use TransactionTracingTrait;
+    use SpanTracerAwareTrait;
 
-    public function __construct(
-        Dispatcher $dispatcher,
-        SpanPool $spanPool,
-        TransactionPool $tracePool
-    ) {
-        $this->dispatcher = $dispatcher;
-        $this->spanPool = $spanPool;
-        $this->tracePool = $tracePool;
+    public function __construct(SpanTracer $spanTracer)
+    {
+        $this->spanTracer = $spanTracer;
     }
+
+    /**
+     * @var array<int, Span>
+     */
+    public array $spanPool = [];
 
     public static function getSubscribedEvents(): array
     {
@@ -43,57 +43,66 @@ class TracingRequestListener implements EventSubscriberInterface
     public function onKernelController(ControllerEvent $event): void
     {
         $request = $event->getRequest();
+
         $route = $this->getRouteName($request);
 
-        $span = $this->transactionStart(
-            $this->getSpanId($request),
-            "{$request->getMethod()} $route",
-            SpanBundle::TRANSACTION_TYPE_SERVER,
-            SpanBundle::SPAN_SUBTYPE_HTTP,
-            $event->isMainRequest()
-        );
+        $span = new Span("{$request->getMethod()} $route", SpanBundle::SPAN_TYPE_SERVER, SpanBundle::SPAN_SUBTYPE_HTTP);
 
         $span->context->http_request = [
             'method' => $request->getMethod(),
             'route' => $route,
             'url' => [
-                'scheme' => $request->getScheme(),
                 'domain' => $request->getHost(),
-                'port' => (string)$request->getPort(),
                 'path' => $request->getBaseUrl() . $request->getPathInfo(),
+                'port' => (int)$request->getPort(),
+                'scheme' => $request->getScheme(),
             ],
         ];
+
+        if ($event->isMainRequest()) {
+            $this->spanPool[$this->getRequestId($request)] = $span;
+
+            $this->spanTracer->startSpanWithTrace($span);
+        } elseif ($this->spanTracer->hasActiveTrace()) {
+            $this->spanPool[$this->getRequestId($request)] = $span;
+
+            $this->spanTracer->startSpan($span);
+        }
     }
 
     public function onKernelResponse(ResponseEvent $event): void
     {
-        $id = $this->getSpanId($event->getRequest());
-        $span = $this->getTransaction($id);
+        $span = $this->spanPool[$this->getRequestId($event->getRequest())] ?? null;
 
         if ($span === null) {
             return;
         }
 
         $statusCode = $event->getResponse()->getStatusCode();
+
         $span->context->http_response = [
             'status_code' => $statusCode,
         ];
 
-        if ($span->successful === null) {
-            $span->successful = $statusCode >= 100 && $statusCode < 500;
-        }
+        $span->setSuccessfulIf($statusCode >= 100 && $statusCode < 500);
 
-        $this->transactionEnd($id);
+        $this->spanTracer->endSpan($span);
     }
 
     public function onKernelException(ExceptionEvent $event): void
     {
-        $this->transactionError($this->getSpanId($event->getRequest()), $event->getThrowable());
+        $span = $this->spanPool[$this->getRequestId($event->getRequest())] ?? null;
+
+        if ($span === null) {
+            return;
+        }
+
+        $span->setError($event->getThrowable());
     }
 
-    private function getSpanId(Request $request): int
+    private function getRequestId(Request $request): int
     {
-        return spl_object_id($request);
+        return \spl_object_id($request);
     }
 
     private function getRouteName(Request $request): string
@@ -106,10 +115,15 @@ class TracingRequestListener implements EventSubscriberInterface
 
         $route = $request->attributes->get('_controller');
 
-        if (is_string($route) && $route !== '') {
+        if (\is_string($route) && $route !== '') {
             return $route;
         }
 
-        return is_string($route) && $route !== '' ? $route : SpanBundle::UNKNOWN;
+        return \is_string($route) && $route !== '' ? $route : SpanBundle::UNKNOWN;
+    }
+
+    public function reset(): void
+    {
+        $this->spanPool = [];
     }
 }

@@ -20,6 +20,6 @@ class TracingHttpClientV5 extends TracingHttpClient
 
     protected function tracingResponse(ResponseInterface $response, Span $span): TracingResponse
     {
-        return new TracingResponseV5($response, $span, $this->dispatcher);
+        return new TracingResponseV5($this->spanTracer, $span, $response);
     }
 }
