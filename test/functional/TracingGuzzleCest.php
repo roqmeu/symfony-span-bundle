@@ -8,19 +8,19 @@ use Roqmeu\SpanBundle\SpanBundle;
 use Roqmeu\SpanBundle\Test\Functional\Helper\CommandCestTrait;
 use Roqmeu\SpanBundle\Test\Support\FunctionalTester;
 
-class HttpClientOnOkCest
+class TracingGuzzleCest
 {
     use CommandCestTrait;
 
-    public function testOkHttpClient(FunctionalTester $I): void
+    public function testOk(FunctionalTester $I): void
     {
         $allEvents = $this->grabEvents($I);
 
         [&$startedSpans, &$endedSpans, &$startedTraces, &$endedTraces] = $allEvents;
 
-        $this->assertCommand($I, $allEvents, 'app:test:http-client-ok', true);
+        $this->assertCommand($I, $allEvents, 'app:test:guzzle-ok', true);
 
-        // Ожидаем 2 спана: один для команды и один для Symfony HTTP запроса
+        // Ожидаем 2 спана: один для команды и один для Guzzle HTTP запроса
         $this->assertEventsCounts($I, $allEvents, 2, 1);
 
         $span = null;
@@ -33,7 +33,7 @@ class HttpClientOnOkCest
             }
         }
 
-        $I->assertNotNull($span, 'Ожидали найти спан для Symfony HTTP запроса');
+        $I->assertNotNull($span, 'Ожидали найти спан для Guzzle HTTP запроса');
         $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Ожидали тип client');
         $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Ожидали подтип http');
     }

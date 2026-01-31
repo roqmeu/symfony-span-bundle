@@ -30,7 +30,9 @@ class Configuration implements ConfigurationInterface
 
         $profilingNode = $node->arrayNode('profiling')->addDefaultsIfNotSet()->children();
         $this->nodeDynamicEnabled($profilingNode, 'enabled', false);
-        $profilingNode->floatNode('threshold')->defaultValue(ProfilerMiddlewarePass::PROFILER_THRESHOLD_DEFAULT)->min(ProfilerMiddlewarePass::PROFILER_THRESHOLD_MIN);
+        $profilingNode->floatNode('threshold')->defaultValue(ProfilerMiddlewarePass::PROFILER_THRESHOLD_DEFAULT)->min(
+            ProfilerMiddlewarePass::PROFILER_THRESHOLD_MIN
+        );
         $this->nodeStringList($profilingNode, 'allowed_types', ProfilerMiddlewarePass::PROFILER_ALLOWED_TYPES_DEFAULT);
         $this->nodeStringList($profilingNode, 'allowed_subtypes', ProfilerMiddlewarePass::PROFILER_IGNORED_TYPES_DEFAULT);
         $this->nodeStringList($profilingNode, 'ignored_types', ProfilerMiddlewarePass::PROFILER_ALLOWED_SUBTYPES_DEFAULT);

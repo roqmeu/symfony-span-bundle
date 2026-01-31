@@ -58,7 +58,7 @@ init:
 	@make reup
 
 lint:
-	@$(dev_compose_exec) "vendor/bin/ecs check $(LINT_FLAGS) -c ./ecs.php  --memory-limit=512M --no-progress-bar"
+	@$(dev_compose_exec) "vendor/bin/ecs check $(LINT_FLAGS) -c ./ecs.php --memory-limit=512M --no-progress-bar"
 
 stan:
 	@$(dev_compose_exec) "ELASTIC_APM_ENABLED='false' vendor/bin/phpstan analyze $(STAN_FLAGS) -c ./phpstan.neon --memory-limit=512M"

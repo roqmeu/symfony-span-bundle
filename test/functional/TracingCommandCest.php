@@ -8,11 +8,11 @@ use Roqmeu\SpanBundle\Test\Functional\Helper\CommandCestTrait;
 use Roqmeu\SpanBundle\Test\Support\FunctionalTester;
 use Symfony\Component\HttpKernel\Kernel;
 
-class CommandOnOkCest
+class TracingCommandCest
 {
     use CommandCestTrait;
 
-    public function testOkCommand(FunctionalTester $I): void
+    public function testOk(FunctionalTester $I): void
     {
         $allEvents = $this->grabEvents($I);
 
@@ -51,5 +51,20 @@ class CommandOnOkCest
             ],
             'TODO'
         );
+    }
+
+    public function testError(FunctionalTester $I): void
+    {
+        $allEvents = $this->grabEvents($I);
+
+        [&$startedSpans, &$endedSpans, &$startedTraces, &$endedTraces] = $allEvents;
+
+        $this->assertCommand($I, $allEvents, 'app:test:command-fail', false);
+
+        $this->assertEventsCounts($I, $allEvents, 1, 1);
+
+        $event = $startedSpans[0];
+
+        $I->assertInstanceOf(\RuntimeException::class, $event->span->getError(), 'Ожидали RuntimeException');
     }
 }

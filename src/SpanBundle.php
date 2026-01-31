@@ -8,6 +8,7 @@ use Roqmeu\SpanBundle\DependencyInjection\Compiler\CleanupPass;
 use Roqmeu\SpanBundle\DependencyInjection\Compiler\DoctrineMiddlewarePass;
 use Roqmeu\SpanBundle\DependencyInjection\Compiler\GuzzleMiddlewarePass;
 use Roqmeu\SpanBundle\DependencyInjection\Compiler\ProfilerMiddlewarePass;
+use Roqmeu\SpanBundle\DependencyInjection\Compiler\RabbitMqBundleMiddlewarePass;
 use Roqmeu\SpanBundle\DependencyInjection\Compiler\SymfonyHttpClientPass;
 use Roqmeu\SpanBundle\DependencyInjection\Compiler\SymfonyMessengerMiddlewarePass;
 use Symfony\Component\DependencyInjection\Compiler\PassConfig;
@@ -52,6 +53,7 @@ class SpanBundle extends Bundle
 
         $container->addCompilerPass(new DoctrineMiddlewarePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 100);
         $container->addCompilerPass(new SymfonyMessengerMiddlewarePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 100);
+        $container->addCompilerPass(new RabbitMqBundleMiddlewarePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 100);
         $container->addCompilerPass(new ProfilerMiddlewarePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 100);
 
         $container->addCompilerPass(new GuzzleMiddlewarePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -100);

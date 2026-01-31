@@ -9,7 +9,7 @@ use Roqmeu\SpanBundle\SpanBundle;
 use Roqmeu\SpanBundle\Test\Functional\Helper\CommandCestTrait;
 use Roqmeu\SpanBundle\Test\Support\FunctionalTester;
 
-class ProfilerCest
+class ProfilingCest
 {
     use CommandCestTrait;
 

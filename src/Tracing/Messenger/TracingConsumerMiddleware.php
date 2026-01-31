@@ -27,8 +27,11 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
 
     private ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry;
 
-    public function __construct(SpanTracer $spanTracer, ?AmqpTransportMetadataRegistry $amqpMetadataRegistry = null, ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry = null)
-    {
+    public function __construct(
+        SpanTracer $spanTracer,
+        ?AmqpTransportMetadataRegistry $amqpMetadataRegistry = null,
+        ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry = null
+    ) {
         $this->spanTracer = $spanTracer;
 
         $this->amqpMetadataRegistry = $amqpMetadataRegistry;
@@ -122,8 +125,14 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
         return $stamp !== null ? $stamp->getTransportName() : SpanBundle::UNKNOWN;
     }
 
-    private function fillAmqpSpan(Span $span, Envelope $envelope, ?string $handlerName, ?string $messageName, string $transportType, string $transportName): void
-    {
+    private function fillAmqpSpan(
+        Span $span,
+        Envelope $envelope,
+        ?string $handlerName,
+        ?string $messageName,
+        string $transportType,
+        string $transportName
+    ): void {
         if ($this->amqpMetadataRegistry !== null) {
             $metadata = $this->amqpMetadataRegistry->get($transportName);
 
@@ -144,8 +153,14 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
         $this->fillDefaultSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
     }
 
-    private function fillDoctrineSpan(Span $span, Envelope $envelope, ?string $handlerName, ?string $messageName, string $transportType, string $transportName): void
-    {
+    private function fillDoctrineSpan(
+        Span $span,
+        Envelope $envelope,
+        ?string $handlerName,
+        ?string $messageName,
+        string $transportType,
+        string $transportName
+    ): void {
         if ($this->doctrineMetadataRegistry !== null) {
             $metadata = $this->doctrineMetadataRegistry->get($transportName);
 
@@ -182,8 +197,14 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
         $this->fillDefaultSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
     }
 
-    private function fillDefaultSpan(Span $span, Envelope $envelope, ?string $handlerName, ?string $messageName, string $transportType, string $transportName): void
-    {
+    private function fillDefaultSpan(
+        Span $span,
+        Envelope $envelope,
+        ?string $handlerName,
+        ?string $messageName,
+        string $transportType,
+        string $transportName
+    ): void {
         $span->setName("CONSUME from {$transportName}");
         $span->setSubtype($transportType);
 

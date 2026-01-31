@@ -24,8 +24,11 @@ class TracingProducerMiddleware implements MiddlewareInterface
 
     private ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry;
 
-    public function __construct(SpanTracer $spanTracer, ?AmqpTransportMetadataRegistry $amqpMetadataRegistry = null, ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry = null)
-    {
+    public function __construct(
+        SpanTracer $spanTracer,
+        ?AmqpTransportMetadataRegistry $amqpMetadataRegistry = null,
+        ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry = null
+    ) {
         $this->spanTracer = $spanTracer;
 
         $this->amqpMetadataRegistry = $amqpMetadataRegistry;

@@ -9,7 +9,7 @@ use Roqmeu\SpanBundle\Test\Functional\Helper\CommandCestTrait;
 use Roqmeu\SpanBundle\Test\Support\FunctionalTester;
 use Roqmeu\SpanBundle\Transport\Event\SpanStartedEvent;
 
-class MessengerOnRabbitMqErrorCest
+class TracingMessengerAmqpCest
 {
     use CommandCestTrait;
 

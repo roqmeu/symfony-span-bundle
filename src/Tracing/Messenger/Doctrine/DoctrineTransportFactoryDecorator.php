@@ -35,8 +35,11 @@ class DoctrineTransportFactoryDecorator implements TransportFactoryInterface
     /**
      * @param TransportFactoryInterface<TransportInterface> $innerFactory
      */
-    public function __construct(TransportFactoryInterface $innerFactory, DoctrineTransportMetadataRegistry $metadataRegistry, ConnectionRegistry $connectionRegistry)
-    {
+    public function __construct(
+        TransportFactoryInterface $innerFactory,
+        DoctrineTransportMetadataRegistry $metadataRegistry,
+        ConnectionRegistry $connectionRegistry
+    ) {
         $this->innerFactory = $innerFactory;
         $this->metadataRegistry = $metadataRegistry;
         $this->connectionRegistry = $connectionRegistry;

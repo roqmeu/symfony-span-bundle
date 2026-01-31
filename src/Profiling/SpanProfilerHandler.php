@@ -10,7 +10,7 @@ use Roqmeu\SpanBundle\Transport\Event\TraceStartedEvent;
 
 class SpanProfilerHandler
 {
-    public bool $enabled;
+    public bool $enabled = false;
 
     private ?SpanProfiler $profiler;
 
@@ -20,8 +20,14 @@ class SpanProfilerHandler
     private ?array $allowedSubtypes;
     private ?array $ignoredSubtypes;
 
-    public function __construct(bool $enabled = false, ?SpanProfiler $profiler = null, ?array $allowedTypes = [], ?array $ignoredTypes = [], ?array $allowedSubtypes = [], ?array $ignoredSubtypes = [])
-    {
+    public function __construct(
+        bool $enabled = false,
+        ?SpanProfiler $profiler = null,
+        ?array $allowedTypes = [],
+        ?array $ignoredTypes = [],
+        ?array $allowedSubtypes = [],
+        ?array $ignoredSubtypes = []
+    ) {
         $this->enabled = $enabled;
 
         $this->profiler = $profiler;

@@ -555,7 +555,15 @@ class ElasticApmBridge
         $elasticStackTrace = [];
 
         foreach ($stacktrace as $call) {
+            if (!\is_string($call) || $call === '') {
+                continue;
+            }
+
             $elasticStackTrace[] = new StackTraceFrame('', 0, $call);
+        }
+
+        if ($elasticStackTrace === []) {
+            return;
         }
 
         $hack = function (array $stacktrace): void {
@@ -563,7 +571,7 @@ class ElasticApmBridge
             $this->stackTrace = $stacktrace;
         };
 
-        $hack->call($elasticSpan, [$elasticStackTrace]);
+        $hack->call($elasticSpan, $elasticStackTrace);
     }
 
     private function makeSegmentMessagingName(string $operation, string $postfix, string $framework, string $queue): string

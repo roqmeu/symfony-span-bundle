@@ -4,17 +4,20 @@ Symfony-бандл, добавляющий трассировку и инстр�
 
 ## Возможности
 
-- Автоинструментирование Symfony HTTP Client, Guzzle, Doctrine DBAL и Symfony Messenger (sync, AMQP, Redis, Doctrine transport).
+- Автоинструментирование Symfony HTTP Client, Guzzle, Doctrine DBAL, Symfony Messenger и OldSound RabbitMqBundle.
 - Централизованное управление трейсами и спанами, совместимое с OpenTelemetry naming-конвенциями.
 - Событийная модель работы: бандл диспатчит события жизненного цикла спанов/трейсов; адаптеры экспортируют данные во внешние системы.
 - Встроенный мост к Elastic APM, учитывающий спецификации агента и маппинг контекста.
-- Профилинг корневых спанов через `ext-excimer` с преобразованием профиля в `internal.profile` спаны.
+- Профайлинг приложения через `ext-excimer`.
 
 ## Требования
 
 - PHP `^7.4` или `^8.0`.
 - Symfony компоненты (Config, DependencyInjection, EventDispatcher) версий `^5.0 || ^6.0 || ^7.0`.
-- Поддержка Doctrine DBAL `^3.0`, Guzzle `^7.0`, Symfony Messenger `^5.4 || ^6.4 || ^7.0` для dev/test окружения.
+- Поддержка Symfony Messenger `^5.4 || ^6.4 || ^7.0`.
+- Поддержка Doctrine DBAL `^3.0`.
+- Поддержка Guzzle `^7.0`.
+- Поддержка OldSound RabbitMqBundle `^2.0`.
 - Для профилинга (опционально): PHP-расширение `excimer` (`ext-excimer`).
 
 ## Установка
@@ -73,7 +76,7 @@ span:
 
 - `span.enabled`: включает регистрацию сервисов `SpanTracer`/`SpanInteractor`/`EventDispatcher`. Если `false`, регистрируются null-реализации (`NullSpanTracer`, `NullSpanInteractor`, `NullEventDispatcher`).
 - `span.enabled` и `span.tracing.enabled` влияют на сборку контейнера (регистрация сервисов и compiler passes), поэтому их следует задавать как обычные `true/false` (не placeholder).
-- `span.tracing.enabled`: включает листенеры HTTP/Console и автоинструментирование (Doctrine DBAL middleware, Symfony HttpClient, Guzzle, Symfony Messenger). Работает только если `span.enabled: true`.
+- `span.tracing.enabled`: включает листенеры HTTP/Console и автоинструментирование (Doctrine DBAL middleware, Symfony HttpClient, Guzzle, Symfony Messenger, OldSound RabbitMqBundle). Работает только если `span.enabled: true`.
 - `span.profiling.enabled`: включает профилинг через `ext-excimer` (если расширение отсутствует — используется `SpanNullProfiler`). Работает только если `span.enabled: true`.
 
 ## Архитектура и концепции
@@ -106,15 +109,13 @@ span:
 
 ### HTTP (Symfony HttpClient & Guzzle)
 
-- Автообёртка клиентов и ответов.
-- Типизация спанов как `client.http`.
-- Сбор HTTP-метаданных (метод, URI, статус, целевой хост/порт) и заполнение `service.target`.
-- Поддержка `HttpClientInterface::stream()` и потоковой обработки chunk'ов.
+- Автоинструментирование клиентов и ответов, с поддержкой потоковой обработки chunk'ов.
+- Сбор HTTP-метаданных (метод, URI, статус, целевой хост/порт).
 
 ### Symfony HTTP Server
 
 - `TracingRequestListener` создаёт root span для входящих HTTP-запросов.
-- Определяет имя транзакции по маршруту и выставляет `outcome` в зависимости от статуса ответа.
+- Определяет имя транзакции по маршруту и выставляет `successful` в зависимости от статуса ответа.
 
 ### Console команды
 
@@ -128,8 +129,13 @@ span:
 
 ### Symfony Messenger
 
-- Producer/consumer middleware для sync и Redis/AMQP драйверов.
-- Создаёт `producer` и `consumer` спаны, нормализует имена очередей и переносит контекст цели.
+- Автоинструментирование producer/consumer для sync и Redis/AMQP драйверов.
+- Создаёт `producer` и `consumer` спаны, нормализует имена очередей, переносит контекст цели и заполняет `server.host`/`server.port` по параметрам соединения.
+
+### OldSound RabbitMqBundle
+
+- Автоинструментирование producer/consumer (включая batch, multiple, dynamic, anon).
+- Создаёт `producer` и `consumer` спаны, нормализует имена очередей, переносит контекст цели и заполняет `server.host`/`server.port` по параметрам соединения.
 
 ## Экспорт и события
 
@@ -172,9 +178,8 @@ span:
 
 ## План развития
 
-- Добавить расширенный контекст в интеграцию Messenger.
-- Реализовать интеграцию с `RabbitMqBundle`.
+- Добавить тест Messenger RabbitMq Ok.
+- Добавить поддержку Doctrine DBAL `^4.0`.
 - Добавить прокидывание и получение `trace-id` в клиенты (Guzzle, Symfony HttpClient, Messenger и т.д.).
 - Поддержать использование `trace-id` в транспортах.
-- Добавить поддержку Doctrine DBAL `^4.0`.
 - Добавить поддержку многоканальной отправки в `TracingProducerMiddleware`.

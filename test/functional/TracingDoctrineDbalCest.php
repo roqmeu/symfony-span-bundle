@@ -8,11 +8,11 @@ use Roqmeu\SpanBundle\SpanBundle;
 use Roqmeu\SpanBundle\Test\Functional\Helper\CommandCestTrait;
 use Roqmeu\SpanBundle\Test\Support\FunctionalTester;
 
-class DbalOnOkCest
+class TracingDoctrineDbalCest
 {
     use CommandCestTrait;
 
-    public function dispatchEvent(FunctionalTester $I): void
+    public function testOk(FunctionalTester $I): void
     {
         $allEvents = $this->grabEvents($I);
 

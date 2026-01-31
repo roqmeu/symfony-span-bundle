@@ -6,6 +6,11 @@ namespace Roqmeu\SpanBundle\Test\Fixture;
 
 use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
 use GuzzleHttp\Client;
+use OldSound\RabbitMqBundle\OldSoundRabbitMqBundle;
+use Roqmeu\SpanBundle\Test\Fixture\Command\RabbitMqBundleFailCommand;
+use Roqmeu\SpanBundle\Test\Fixture\Command\RabbitMqBundleOkCommand;
+use Roqmeu\SpanBundle\Test\Fixture\RabbitMqBundle\FailConsumer as RabbitMqBundleFailConsumer;
+use Roqmeu\SpanBundle\Test\Fixture\RabbitMqBundle\OkConsumer as RabbitMqBundleOkConsumer;
 use Roqmeu\SpanBundle\SpanBundle;
 use Roqmeu\SpanBundle\Test\Fixture\Command\CommandFail;
 use Roqmeu\SpanBundle\Test\Fixture\Command\CommandOk;
@@ -44,6 +49,7 @@ class TestKernel extends Kernel
     {
         yield new FrameworkBundle();
         yield new DoctrineBundle();
+        yield new OldSoundRabbitMqBundle();
         yield new SpanBundle();
     }
 
@@ -120,6 +126,54 @@ class TestKernel extends Kernel
             ],
         ]);
 
+        $c->extension('old_sound_rabbit_mq', [
+            'connections' => [
+                'default' => [
+                    'url' => 'amqp://rabbitmq:rabbitmq@rabbitmq:5672/%2f',
+                ],
+            ],
+            'producers' => [
+                'producer_ok' => [
+                    'connection' => 'default',
+                    'exchange_options' => [
+                        'name' => 'rabbitmq_bundle_exchange_ok',
+                        'type' => 'fanout',
+                    ],
+                ],
+                'producer_fail' => [
+                    'connection' => 'default',
+                    'exchange_options' => [
+                        'name' => 'rabbitmq_bundle_exchange_fail',
+                        'type' => 'fanout',
+                    ],
+                ],
+            ],
+            'consumers' => [
+                'consumer_ok' => [
+                    'connection' => 'default',
+                    'exchange_options' => [
+                        'name' => 'rabbitmq_bundle_exchange_ok',
+                        'type' => 'fanout',
+                    ],
+                    'queue_options' => [
+                        'name' => 'rabbitmq_bundle_queue_ok',
+                    ],
+                    'callback' => RabbitMqBundleOkConsumer::class,
+                ],
+                'consumer_fail' => [
+                    'connection' => 'default',
+                    'exchange_options' => [
+                        'name' => 'rabbitmq_bundle_exchange_fail',
+                        'type' => 'fanout',
+                    ],
+                    'queue_options' => [
+                        'name' => 'rabbitmq_bundle_queue_fail',
+                    ],
+                    'callback' => RabbitMqBundleFailConsumer::class,
+                ],
+            ],
+        ]);
+
         $c->extension('span', [
             'enabled' => true,
             'tracing' => [
@@ -141,6 +195,9 @@ class TestKernel extends Kernel
         $services->set(OkEventHandler::class)
             ->tag('messenger.message_handler', ['handles' => OkEvent::class]);
 
+        $services->set(RabbitMqBundleOkConsumer::class);
+        $services->set(RabbitMqBundleFailConsumer::class);
+
         $services->set(CommandOk::class)
             ->tag('console.command');
         $services->set(CommandFail::class)
@@ -156,6 +213,15 @@ class TestKernel extends Kernel
             ->tag('console.command');
         $services->set(MessengerRedisOkCommand::class)
             ->tag('console.command');
+
+        $services->set(RabbitMqBundleOkCommand::class)
+            ->arg('$producer', new ReferenceConfigurator('old_sound_rabbit_mq.producer_ok_producer'))
+            ->arg('$consumer', new ReferenceConfigurator('old_sound_rabbit_mq.consumer_ok_consumer'))
+            ->tag('console.command', ['command' => 'app:test:rabbitmq-bundle-ok']);
+        $services->set(RabbitMqBundleFailCommand::class)
+            ->arg('$producer', new ReferenceConfigurator('old_sound_rabbit_mq.producer_fail_producer'))
+            ->arg('$consumer', new ReferenceConfigurator('old_sound_rabbit_mq.consumer_fail_consumer'))
+            ->tag('console.command', ['command' => 'app:test:rabbitmq-bundle-fail']);
 
         $services->set(ProfilerCommand::class)
             ->tag('console.command');

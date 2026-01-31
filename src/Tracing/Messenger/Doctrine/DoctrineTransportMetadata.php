@@ -25,8 +25,15 @@ class DoctrineTransportMetadata
 
     public ?string $queueName;
 
-    public function __construct(string $transportName, ?string $host, ?int $port, ?string $databaseType = null, ?string $databaseName = null, ?string $tableName = null, ?string $queueName = null)
-    {
+    public function __construct(
+        string $transportName,
+        ?string $host,
+        ?int $port,
+        ?string $databaseType = null,
+        ?string $databaseName = null,
+        ?string $tableName = null,
+        ?string $queueName = null
+    ) {
         $this->transportName = $transportName;
 
         $this->host = $host ?: null;
