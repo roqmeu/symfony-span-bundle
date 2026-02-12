@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Roqmeu\SpanBundle\Test\Functional;
 
 use Roqmeu\SpanBundle\SpanBundle;
+use Roqmeu\SpanBundle\Test\Fixture\Command\MessengerRedisOkCommand;
 use Roqmeu\SpanBundle\Test\Functional\Helper\CommandCestTrait;
 use Roqmeu\SpanBundle\Test\Support\FunctionalTester;
 
@@ -28,7 +29,7 @@ class TracingMessengerRedisCest
         $startedTraces = [];
         $endedTraces = [];
 
-        $this->assertCommand($I, $allEvents, 'messenger:consume transport-redis --no-reset --limit=1', true);
+        $this->assertCommand($I, $allEvents, 'messenger:consume transport-redis --no-reset --limit=1', true, MessengerRedisOkCommand::class);
 
         // Ожидаем 2 Span: cli команда консюмера, консюмер
         $this->assertEventsCounts($I, $allEvents, 2, 2);

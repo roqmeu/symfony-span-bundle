@@ -14,14 +14,16 @@ trait CommandCestTrait
 {
     use EventDispatcherCestTrait;
 
-    protected function assertCommand(FunctionalTester $I, array $events, string $command, bool $successful, ?callable $beforeHook = null): void
+    protected function assertCommand(FunctionalTester $I, array $events, string $command, bool $successful, string $commandClass = ''): void
     {
         [&$startedSpans, &$endedSpans, &$startedTraces, &$endedTraces] = $events;
 
         $application = $I->getApplication();
 
-        if (\is_callable($beforeHook)) {
-            $beforeHook($application);
+        if ($commandClass !== '') {
+            $commandService = $I->grabService($commandClass);
+
+            $I->assertNotNull($commandService, 'TODO');
         }
 
         $exitCode = $application->run(

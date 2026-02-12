@@ -11,6 +11,7 @@ use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\HttpClient\ScopingHttpClient;
 use Symfony\Component\HttpKernel\Kernel;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -32,57 +33,101 @@ class SymfonyHttpClientPass implements CompilerPassInterface
             ? TracingHttpClientV6::class
             : TracingHttpClientV5::class;
 
-        $clients = ['http_client'];
+        $clients = \array_keys($container->findTaggedServiceIds('http_client.client'));
 
-        foreach ($container->getDefinitions() as $id => $definition) {
-            if (\strpos($id, '.inner') !== false || \strpos($id, '.tracing') !== false) {
-                continue;
-            }
-
-            if ($definition->isAbstract()) {
-                continue;
-            }
-
-            if ($definition->getDecoratedService() !== null) {
-                continue;
-            }
-
-            $class = $definition->getClass();
-
-            if ($class === null) {
-                continue;
-            }
-
-            while (\is_string($class) && $container->hasParameter($class)) {
-                $param = $container->getParameter($class);
-
-                if (!\is_string($param)) {
-                    continue 2;
-                }
-
-                $class = $param;
-            }
-
-            if (!\is_string($class) || !\class_exists($class, false)) {
-                continue;
-            }
-
-            if (\is_subclass_of($class, HttpClientInterface::class)) {
-                $clients[] = $id;
-            }
+        if ($container->has('http_client.transport')) {
+            $clients[] = 'http_client.transport';
+        }
+        if ($container->has('http_client')) {
+            $clients[] = 'http_client';
         }
 
-        foreach ($clients as $clientId) {
-            $decoratedId = $clientId . '.span.inner';
+        $clientIds = [];
+
+        foreach (\array_unique($clients) as $id) {
+            $this->addHttpClientId($container, $id, $clientIds);
+        }
+
+        foreach ($clientIds as $clientId) {
+            $decoratorId = $clientId . '.span.tracing.decorator';
+            $innerId = $clientId . '.span.tracing.inner';
+
+            if ($container->hasDefinition($decoratorId) || $container->hasDefinition($innerId)) {
+                continue;
+            }
 
             $decorator = new Definition($tracingClass);
             $decorator->setAutoconfigured(true);
             $decorator->setAutowired(true);
 
-            $decorator->setDecoratedService($clientId, $decoratedId);
-            $decorator->setArgument('$client', new Reference($decoratedId));
+            $decorator->setDecoratedService($clientId, $innerId);
+            $decorator->setArgument('$client', new Reference($innerId));
 
-            $container->setDefinition($clientId . '.span.tracing', $decorator);
+            $container->setDefinition($decoratorId, $decorator);
         }
+    }
+
+    private function addHttpClientId(ContainerBuilder $container, string $id, array &$clients): bool
+    {
+        if (\in_array($id, $clients, true) || \strpos($id, '.span.tracing.') !== false) {
+            return true;
+        }
+
+        if (!$container->hasDefinition($id)) {
+            return false;
+        }
+
+        $definition = $container->getDefinition($id);
+
+        if ($definition->isAbstract() || $definition->getDecoratedService() !== null) {
+            return false;
+        }
+
+        $class = $definition->getClass();
+
+        while (\is_string($class) && $container->hasParameter($class)) {
+            $param = $container->getParameter($class);
+
+            if (!\is_string($param)) {
+                $class = null;
+                break;
+            }
+
+            $class = $param;
+        }
+
+        if (!\is_string($class)) {
+            return false;
+        }
+
+        if ($class !== HttpClientInterface::class && !\is_subclass_of($class, HttpClientInterface::class, true)) {
+            return false;
+        }
+
+        if (\is_a($class, ScopingHttpClient::class, true)) {
+            $baseId = (string)($definition->getArguments()[0] ?? '');
+
+            return $baseId !== '' && $this->addHttpClientId($container, $baseId, $clients);
+        }
+
+        $found = false;
+
+        foreach ($definition->getArguments() as $argument) {
+            if (\is_array($argument) && \count($argument) === 1) {
+                $argument = \current($argument);
+            }
+
+            if ($argument instanceof Reference) {
+                $found = $found || $this->addHttpClientId($container, (string)$argument, $clients);
+            }
+        }
+
+        if ($found) {
+            return true;
+        }
+
+        $clients[] = $id;
+
+        return true;
     }
 }

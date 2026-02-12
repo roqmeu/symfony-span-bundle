@@ -1,6 +1,6 @@
 #!make
 
-.PHONY: up reup rebi init lint stan test chain
+.PHONY: up reup rebi init lint stan test cctest chain
 
 project=symfony-span-bundle
 env-file=.env
@@ -28,6 +28,8 @@ shr:
 
 cc:
 	@rm -rf ./var/cache
+	@$(dev_compose_exec) 'composer clear-cache -n --quiet'
+	@$(dev_compose_exec) 'composer dump-autoload --dev -o -a -n --quiet'
 
 init:
 	@set -eu; \
@@ -54,8 +56,8 @@ init:
 	; \
 	$(dev_compose_exec) "composer update -n -W --prefer-dist --no-progress --no-cache"
 	@git restore ./composer.json
-	@make cc
 	@make reup
+	@make cc
 
 lint:
 	@$(dev_compose_exec) "vendor/bin/ecs check $(LINT_FLAGS) -c ./ecs.php --memory-limit=512M --no-progress-bar"
@@ -64,9 +66,11 @@ stan:
 	@$(dev_compose_exec) "ELASTIC_APM_ENABLED='false' vendor/bin/phpstan analyze $(STAN_FLAGS) -c ./phpstan.neon --memory-limit=512M"
 
 test:
-	@$(dev_compose_exec) 'APP_ENV=test composer clear-cache -n --quiet'
-	@$(dev_compose_exec) 'APP_ENV=test composer dump-autoload --dev -o -a -n --quiet'
-	@$(dev_compose_exec) 'APP_ENV=test TEST_TOKEN=test vendor/bin/codecept build -n --quiet'
 	@$(dev_compose_exec) 'APP_ENV=test TEST_TOKEN=test vendor/bin/codecept run functional -n --no-artifacts --no-rebuild'
 
-chain: cc lint stan test
+cctest:
+	@make cc
+	@$(dev_compose_exec) 'APP_ENV=test TEST_TOKEN=test vendor/bin/codecept build -n --quiet'
+	@make test
+
+chain: stan test

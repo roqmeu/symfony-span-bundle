@@ -12,6 +12,8 @@ use Roqmeu\SpanBundle\Tracing\Messenger\Amqp\AmqpTransportMetadataRegistry;
 use Roqmeu\SpanBundle\Tracing\Messenger\Doctrine\DoctrineTransportMetadataRegistry;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
+use Symfony\Component\Messenger\Handler\HandlerDescriptor;
+use Symfony\Component\Messenger\Handler\HandlersLocatorInterface;
 use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
 use Symfony\Component\Messenger\Middleware\StackInterface;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
@@ -23,16 +25,20 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
 {
     use SpanTracerAwareTrait;
 
+    private HandlersLocatorInterface $handlersLocator;
+
     private ?AmqpTransportMetadataRegistry $amqpMetadataRegistry;
 
     private ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry;
 
     public function __construct(
         SpanTracer $spanTracer,
+        HandlersLocatorInterface $handlersLocator,
         ?AmqpTransportMetadataRegistry $amqpMetadataRegistry = null,
         ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry = null
     ) {
         $this->spanTracer = $spanTracer;
+        $this->handlersLocator = $handlersLocator;
 
         $this->amqpMetadataRegistry = $amqpMetadataRegistry;
         $this->doctrineMetadataRegistry = $doctrineMetadataRegistry;
@@ -56,9 +62,14 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
         } catch (HandlerFailedException $error) {
             $errors = $this->getErrorsFromHandlerError($error);
 
-            $handlerName = array_key_first($errors);
+            $firstErrorKey = \array_key_first($errors);
+            $firstError = $errors[$firstErrorKey];
 
-            $span->setError($errors[$handlerName]);
+            if (\is_string($firstErrorKey) && $firstErrorKey !== '') {
+                $handlerName = $firstErrorKey;
+            }
+
+            $span->setError($firstError);
 
             throw $error;
         } catch (\Throwable $throwable) {
@@ -73,6 +84,16 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
 
             if ($stamp !== null) {
                 $handlerName = $stamp->getHandlerName();
+            }
+
+            if ($handlerName === null) {
+                foreach ($this->handlersLocator->getHandlers($envelope) as $handlerCandidate) {
+                    if ($handlerCandidate instanceof HandlerDescriptor) {
+                        $handlerName = $handlerCandidate->getName();
+
+                        break;
+                    }
+                }
             }
 
             $transportType = $this->getTransportTypeFromEnvelope($envelope);

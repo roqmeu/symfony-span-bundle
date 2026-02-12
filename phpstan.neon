@@ -4,14 +4,15 @@ parameters:
     ignoreErrors:
         - '#.*(?i)short ternary operator is not allowed(?-i).*#'
         - '#.*(?i)no value type specified in iterable type(?-i).*#'
+        - '#.*(?i)interface .+ is not generic(?-i).*#'
     level: 8
     paths:
         - ./src
     excludePaths:
         - ./tests/*
-        - ./src/Tracing/HttpClient/TracingHttpClientV*.php
-        - ./src/Tracing/HttpClient/TracingResponseV*.php
-        - ./src/Tracing/Messenger/TracingConsumerMiddlewareV*.php
+        - ./src/Tracing/HttpClient/*V5.php
+        - ./src/Tracing/Messenger/*V5.php
+        - ./src/Tracing/Doctrine/*V3.php
 
 includes:
     - ./vendor/phpstan/phpstan-doctrine/extension.neon

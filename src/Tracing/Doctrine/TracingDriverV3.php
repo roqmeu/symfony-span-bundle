@@ -10,33 +10,9 @@ use Doctrine\DBAL\Driver\API\ExceptionConverter;
 use Doctrine\DBAL\Driver\Connection as DriverConnection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
-use Roqmeu\SpanBundle\SpanTracer;
-use Roqmeu\SpanBundle\SpanTracerAwareTrait;
 
-class TracingDriver implements Driver
+class TracingDriverV3 extends AbstractTracingDriver implements Driver
 {
-    use SpanTracerAwareTrait;
-
-    use DbalTracingTrait;
-
-    private Driver $driver;
-
-    public function __construct(SpanTracer $spanTracer, Driver $driver)
-    {
-        $this->spanTracer = $spanTracer;
-        $this->driver = $driver;
-    }
-
-    public function connect(array $params): DriverConnection
-    {
-        $connection = $this->driver->connect($params);
-
-        $databaseType = $this->determineDatabaseType($this->driver);
-        $databaseName = $this->determineDatabaseName($params);
-
-        return new TracingConnection($this->spanTracer, $connection, $params, $databaseType, $databaseName);
-    }
-
     public function getDatabasePlatform(): AbstractPlatform
     {
         return $this->driver->getDatabasePlatform();
@@ -47,11 +23,24 @@ class TracingDriver implements Driver
         return $this->driver->getExceptionConverter();
     }
 
+    protected function resolveDatabasePlatform(DriverConnection $connection): AbstractPlatform
+    {
+        return $this->driver->getDatabasePlatform();
+    }
+
     /**
      * @return AbstractSchemaManager<AbstractPlatform>
      */
     public function getSchemaManager(Connection $conn, AbstractPlatform $platform): AbstractSchemaManager
     {
         return $this->driver->getSchemaManager($conn, $platform);
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    protected function createTracingConnection(DriverConnection $connection, array $params, string $databaseType, string $databaseName): DriverConnection
+    {
+        return new TracingConnectionV3($this->spanTracer, $connection, $params, $databaseType, $databaseName);
     }
 }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Roqmeu\SpanBundle\Test\Functional;
 
+use Roqmeu\SpanBundle\Test\Fixture\Command\CommandFail;
+use Roqmeu\SpanBundle\Test\Fixture\Command\CommandOk;
 use Roqmeu\SpanBundle\Test\Functional\Helper\CommandCestTrait;
 use Roqmeu\SpanBundle\Test\Support\FunctionalTester;
 use Symfony\Component\HttpKernel\Kernel;
@@ -18,7 +20,7 @@ class TracingCommandCest
 
         [&$startedSpans, &$endedSpans, &$startedTraces, &$endedTraces] = $allEvents;
 
-        $this->assertCommand($I, $allEvents, 'app:test:command-ok', true);
+        $this->assertCommand($I, $allEvents, 'app:test:command-ok', true, CommandOk::class);
 
         $this->assertEventsCounts($I, $allEvents, 1, 1);
 
@@ -59,7 +61,7 @@ class TracingCommandCest
 
         [&$startedSpans, &$endedSpans, &$startedTraces, &$endedTraces] = $allEvents;
 
-        $this->assertCommand($I, $allEvents, 'app:test:command-fail', false);
+        $this->assertCommand($I, $allEvents, 'app:test:command-fail', false, CommandFail::class);
 
         $this->assertEventsCounts($I, $allEvents, 1, 1);
 

@@ -6,7 +6,8 @@ namespace Roqmeu\SpanBundle\Tracing\Messenger\Doctrine;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ConnectionRegistry;
-use Roqmeu\SpanBundle\Tracing\Doctrine\DbalTracingTrait;
+use Roqmeu\SpanBundle\SpanBundle;
+use Roqmeu\SpanBundle\Tracing\Doctrine\AbstractTracingDbal;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\TransportFactoryInterface;
 use Symfony\Component\Messenger\Transport\TransportInterface;
@@ -21,8 +22,6 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
  */
 class DoctrineTransportFactoryDecorator implements TransportFactoryInterface
 {
-    use DbalTracingTrait;
-
     /**
      * @var TransportFactoryInterface<TransportInterface>
      */
@@ -83,7 +82,7 @@ class DoctrineTransportFactoryDecorator implements TransportFactoryInterface
 
                     $host = $this->determineHost($connectionParams);
                     $port = $this->determinePort($connectionParams);
-                    $databaseType = $this->determineDatabaseType($dbalConnection->getDriver());
+                    $databaseType = AbstractTracingDbal::mapPlatformToDatabaseType($dbalConnection->getDatabasePlatform());
                     $databaseName = $this->determineDatabaseName($connectionParams);
                 }
             }
@@ -94,6 +93,42 @@ class DoctrineTransportFactoryDecorator implements TransportFactoryInterface
         } catch (\Throwable $e) {
             // Silently ignore errors to not break transport creation
         }
+    }
+
+    /**
+     * @param array<string, mixed> $connectionParams
+     */
+    private function determineDatabaseName(array $connectionParams): string
+    {
+        $databaseName = $connectionParams['dbname'] ?? $connectionParams['path'] ?? SpanBundle::UNKNOWN;
+
+        return \is_string($databaseName) && $databaseName !== '' ? $databaseName : SpanBundle::UNKNOWN;
+    }
+
+    /**
+     * @param array<string, mixed> $connectionParams
+     */
+    private function determineHost(array $connectionParams): ?string
+    {
+        $host = $connectionParams['host'] ?? null;
+
+        return \is_string($host) && $host !== '' ? $host : null;
+    }
+
+    /**
+     * @param array<string, mixed> $connectionParams
+     */
+    private function determinePort(array $connectionParams): ?int
+    {
+        $port = $connectionParams['port'] ?? null;
+
+        if ($port === null || $port === '') {
+            return null;
+        }
+
+        $port = (int) $port;
+
+        return $port > 0 ? $port : null;
     }
 
     /**

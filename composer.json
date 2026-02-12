@@ -15,17 +15,18 @@
     "authors": [
         {
             "name": "Roqmeu",
-            "email": "your@email.com"
+            "email": "48632573+roqmeu@users.noreply.github.com"
         }
     ],
     "require": {
         "php": "^7.4 || ^8.0",
+        "guzzlehttp/psr7": "^1.0 || ^2.0",
         "symfony/config": "^5.0 || ^6.0 || ^7.0",
         "symfony/dependency-injection": "^5.0 || ^6.0 || ^7.0",
         "symfony/event-dispatcher": "^5.0 || ^6.0 || ^7.0"
     },
     "conflict": {
-        "doctrine/dbal": "<3.0 || >=4.0",
+        "doctrine/dbal": "<3.0 || >=5.0",
         "guzzlehttp/guzzle": "<7.0 || >=8.0",
         "php-amqplib/rabbitmq-bundle": "<2.0 || >=3.0",
         "symfony/amqp-messenger": "<5.0 || >=8.0",
@@ -43,18 +44,15 @@
         "codeception/codeception": "^4.0 || ^5.0",
         "codeception/module-asserts": "^2.0 || ^3.0",
         "codeception/module-symfony": "^2.0 || ^3.0",
-        "doctrine/dbal": "^3.0",
+        "doctrine/dbal": "^3.0 || ^4.0",
         "doctrine/doctrine-bundle": "^2.0",
         "guzzlehttp/guzzle": "^7.0",
-        "open-telemetry/api": "^1.0",
-        "open-telemetry/sdk": "^1.0",
         "php-amqplib/rabbitmq-bundle": "^2.0",
         "phpstan/phpstan": "^2.0",
         "phpstan/phpstan-doctrine": "^2.0",
         "phpstan/phpstan-strict-rules": "^2.0",
         "phpstan/phpstan-symfony": "^2.0",
         "roave/security-advisories": "dev-latest",
-        "sentry/sentry-symfony": "^5.0",
         "symfony/amqp-messenger": "^5.4 || ^6.4 || ^7.0",
         "symfony/console": "^5.4 || ^6.4 || ^7.0",
         "symfony/doctrine-messenger": "^5.4 || ^6.4 || ^7.0",

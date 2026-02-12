@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Roqmeu\SpanBundle\Test\Functional;
 
 use Roqmeu\SpanBundle\SpanBundle;
+use Roqmeu\SpanBundle\Test\Fixture\Command\MessengerRabbitMqFailCommand;
+use Roqmeu\SpanBundle\Test\Fixture\Command\MessengerRabbitMqOkCommand;
 use Roqmeu\SpanBundle\Test\Functional\Helper\CommandCestTrait;
 use Roqmeu\SpanBundle\Test\Support\FunctionalTester;
 
@@ -18,7 +20,7 @@ class TracingRabbitMqBundleCest
 
         [&$startedSpans, &$endedSpans, &$startedTraces, &$endedTraces] = $allEvents;
 
-        $this->assertCommand($I, $allEvents, 'app:test:rabbitmq-bundle-ok', true);
+        $this->assertCommand($I, $allEvents, 'app:test:rabbitmq-bundle-ok', true, MessengerRabbitMqOkCommand::class);
 
         // Ожидаем 2 Span: cli команда продюсера, продюсер
         $this->assertEventsCounts($I, $allEvents, 2, 1);
@@ -74,7 +76,7 @@ class TracingRabbitMqBundleCest
 
         [&$startedSpans, &$endedSpans, &$startedTraces, &$endedTraces] = $allEvents;
 
-        $this->assertCommand($I, $allEvents, 'app:test:rabbitmq-bundle-fail', true);
+        $this->assertCommand($I, $allEvents, 'app:test:rabbitmq-bundle-fail', true, MessengerRabbitMqFailCommand::class);
 
         // Ожидаем 2 Span: cli команда продюсера, продюсер
         $this->assertEventsCounts($I, $allEvents, 2, 1);

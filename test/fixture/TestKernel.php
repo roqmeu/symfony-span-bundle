@@ -7,6 +7,8 @@ namespace Roqmeu\SpanBundle\Test\Fixture;
 use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
 use GuzzleHttp\Client;
 use OldSound\RabbitMqBundle\OldSoundRabbitMqBundle;
+use Roqmeu\SpanBundle\Test\Fixture\Command\HttpClientScopedOkCommand;
+use Roqmeu\SpanBundle\Test\Fixture\Command\HttpClientStreamOkCommand;
 use Roqmeu\SpanBundle\Test\Fixture\Command\RabbitMqBundleFailCommand;
 use Roqmeu\SpanBundle\Test\Fixture\Command\RabbitMqBundleOkCommand;
 use Roqmeu\SpanBundle\Test\Fixture\RabbitMqBundle\FailConsumer as RabbitMqBundleFailConsumer;
@@ -118,9 +120,11 @@ class TestKernel extends Kernel
                 'connections' => [
                     'default' => [
                         'url' => 'pgsql://postgres:postgres@pgsql:5432/symfony_span_bundle',
+                        'server_version' => '16.0.0',
                     ],
                     'secondary' => [
                         'url' => 'pgsql://postgres:postgres@pgsql:5432/symfony_span_bundle',
+                        'server_version' => '16.0.0',
                     ],
                 ],
             ],
@@ -227,6 +231,11 @@ class TestKernel extends Kernel
             ->tag('console.command');
 
         $services->set(HttpClientOkCommand::class)
+            ->tag('console.command');
+        $services->set(HttpClientScopedOkCommand::class)
+            ->arg('$httpClient', new ReferenceConfigurator('scoped.span.client'))
+            ->tag('console.command');
+        $services->set(HttpClientStreamOkCommand::class)
             ->tag('console.command');
 
         $services->set(GuzzleOkCommand::class)

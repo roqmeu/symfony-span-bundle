@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Roqmeu\SpanBundle\Test\Functional;
 
 use Roqmeu\SpanBundle\SpanBundle;
+use Roqmeu\SpanBundle\Test\Fixture\Command\DbalOkCommand;
 use Roqmeu\SpanBundle\Test\Functional\Helper\CommandCestTrait;
 use Roqmeu\SpanBundle\Test\Support\FunctionalTester;
 
@@ -18,7 +19,7 @@ class TracingDoctrineDbalCest
 
         [&$startedSpans, &$endedSpans, &$startedTraces, &$endedTraces] = $allEvents;
 
-        $this->assertCommand($I, $allEvents, 'app:test:dbal-ok', true);
+        $this->assertCommand($I, $allEvents, 'app:test:dbal-ok', true, DbalOkCommand::class);
 
         // Ожидаем: 1 console span + 7 DB spans (CREATE, INSERT, SELECT, UPDATE, DELETE, DROP) + 4 Transaction spans
         $this->assertEventsCounts($I, $allEvents, 12, 1);
