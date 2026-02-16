@@ -22,7 +22,7 @@ class TracingCommandListener implements EventSubscriberInterface, ResetInterface
 {
     use SpanTracerAwareTrait;
 
-    private KernelInterface $kernel;
+    protected KernelInterface $kernel;
 
     /**
      * @var array<int, Span>
@@ -32,6 +32,7 @@ class TracingCommandListener implements EventSubscriberInterface, ResetInterface
     public function __construct(SpanTracer $spanTracer, KernelInterface $kernel)
     {
         $this->spanTracer = $spanTracer;
+
         $this->kernel = $kernel;
     }
 
@@ -52,7 +53,7 @@ class TracingCommandListener implements EventSubscriberInterface, ResetInterface
             return;
         }
 
-        $span = new Span($command->getName() ?? SpanBundle::UNKNOWN, SpanBundle::SPAN_TYPE_CONSOLE);
+        $span = new Span(SpanBundle::SPAN_TYPE_CONSOLE);
 
         if (\extension_loaded('posix')) {
             $span->context->process = [
@@ -87,7 +88,15 @@ class TracingCommandListener implements EventSubscriberInterface, ResetInterface
         if ($this->spanTracer->hasActiveTrace()) {
             $this->spanTracer->startSpan($span);
         } else {
-            $this->spanTracer->startSpanWithTrace($span);
+            $input = $event->getInput();
+
+            $this->spanTracer->startTraceSpan($span, static function (string $key) use ($input): ?string {
+                if (!$input->hasOption($key)) {
+                    return null;
+                }
+
+                return ((string)($input->getOption($key) ?? '')) ?: null;
+            });
         }
     }
 

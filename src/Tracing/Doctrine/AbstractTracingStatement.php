@@ -48,7 +48,7 @@ abstract class AbstractTracingStatement extends AbstractTracingDbal
             return $callback();
         }
 
-        $span = new Span($this->buildSpanName($this->sql), SpanBundle::SPAN_TYPE_DB, $this->databaseType);
+        $span = new Span(SpanBundle::SPAN_TYPE_DB, $this->databaseType);
 
         $this->fillSpanContext($span, $this->sql);
 

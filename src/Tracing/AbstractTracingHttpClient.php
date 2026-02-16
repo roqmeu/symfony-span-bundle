@@ -39,13 +39,11 @@ abstract class AbstractTracingHttpClient
         $this->spanTracer = $spanTracer;
     }
 
-    protected function requestSpanStart(string $method, UriInterface $uri): Span
+    protected function makeRequestSpan(string $method, UriInterface $uri): Span
     {
         $scheme = $uri->getScheme();
         $host = $uri->getHost();
         $port = $uri->getPort();
-
-        $targetName = $host;
 
         if ($port === null && $scheme !== '') {
             $port = self::SERVICE_PORTS[$scheme] ?? null;
@@ -59,16 +57,7 @@ abstract class AbstractTracingHttpClient
             }
         }
 
-        if ($port !== null) {
-            $targetName = "{$targetName}:{$port}";
-        }
-
-        $span = new Span("{$method} {$targetName}", SpanBundle::SPAN_TYPE_CLIENT, SpanBundle::SPAN_SUBTYPE_HTTP);
-
-        $span->context->target = [
-            'type' => SpanBundle::SPAN_SUBTYPE_HTTP,
-            'name' => $targetName,
-        ];
+        $span = new Span(SpanBundle::SPAN_TYPE_CLIENT, SpanBundle::SPAN_SUBTYPE_HTTP);
 
         $span->context->http_request = [
             'method' => $method,
@@ -79,8 +68,6 @@ abstract class AbstractTracingHttpClient
                 'scheme' => $scheme,
             ],
         ];
-
-        $this->spanTracer->startSpan($span);
 
         return $span;
     }

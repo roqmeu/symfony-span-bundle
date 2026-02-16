@@ -23,36 +23,27 @@ trait RabbitMqConsumerTracingTrait
     {
         $queueName = $this->resolveQueueName($queueName);
 
-        $span = new Span("CONSUME from {$queueName}", SpanBundle::SPAN_TYPE_CONSUMER, SpanBundle::SPAN_SUBTYPE_RABBITMQ);
+        $span = new Span(SpanBundle::SPAN_TYPE_CONSUMER, SpanBundle::SPAN_SUBTYPE_RABBITMQ);
 
-        $span->context->target = [
-            'type' => SpanBundle::SPAN_SUBTYPE_RABBITMQ,
-            'name' => $queueName,
-        ];
         $span->context->message = [
             'consumer_name' => $this->resolveConsumerName($callback),
-            'name' => SpanBundle::UNKNOWN,
             'queue_name' => $queueName,
         ];
 
         $this->fillServerContext($span);
 
         /** @var AMQPTable $headers */
-        $headers = $msg->get('application_headers');
+        $headers = $msg->has('application_headers') ? $msg->get('application_headers') : null;
 
-        $traceId = null;
-        $traceParentId = null;
+        $propagationExtractor = null;
 
         if ($headers instanceof AMQPTable) {
-            $traceData = \explode('-', $headers['traceparent'] ?? '');
-
-            if ($traceData !== false) {
-                $traceId = $traceData[1] ?? null;
-                $traceParentId = $traceData[2] ?? null;
-            }
+            $propagationExtractor = static function (string $key) use ($headers): ?string {
+                return ((string)($headers[$key] ?? null)) ?: null;
+            };
         }
 
-        $this->spanTracer->startSpanWithTrace($span, $traceId, $traceParentId);
+        $this->spanTracer->startTraceSpan($span, $propagationExtractor);
 
         try {
             parent::processMessageQueueCallback($msg, $queueName, $callback);

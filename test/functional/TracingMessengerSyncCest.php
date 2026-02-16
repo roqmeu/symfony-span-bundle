@@ -29,9 +29,6 @@ class TracingMessengerSyncCest
         $I->assertNotNull($span, 'TODO');
         $I->assertEquals(SpanBundle::SPAN_SUBTYPE_MESSENGER, $span->getSubtype(), 'TODO');
 
-        $I->assertEquals('messenger', $span->context->target['type'], 'TODO');
-        $I->assertEquals('transport-sync', $span->context->target['name'], 'TODO');
-
         $I->assertNotEmpty($span->context->message['name'], 'TODO');
         $I->assertEquals('transport-sync', $span->context->message['queue_name'], 'TODO');
 
@@ -42,9 +39,6 @@ class TracingMessengerSyncCest
 
         $I->assertEquals(true, $span->isSuccessful(), 'Спан должен быть успешным');
         $I->assertNull($span->getError(), 'Ошибка должна отсутствовать');
-
-        $I->assertEquals('messenger', $span->context->target['type'], 'TODO');
-        $I->assertEquals('transport-sync', $span->context->target['name'], 'TODO');
 
         $I->assertNotEmpty($span->context->message['consumer_name'], 'TODO');
         $I->assertNotEmpty($span->context->message['name'], 'TODO');
@@ -69,9 +63,6 @@ class TracingMessengerSyncCest
         $I->assertEquals(false, $span->isSuccessful(), 'TODO');
         $I->assertInstanceOf(\RuntimeException::class, $span->getError(), 'TODO');
 
-        $I->assertEquals('messenger', $span->context->target['type'], 'TODO');
-        $I->assertEquals('unknown', $span->context->target['name'], 'TODO');
-
         $I->assertNotEmpty($span->context->message['name'], 'TODO');
         $I->assertEquals('unknown', $span->context->message['queue_name'], 'TODO');
 
@@ -82,9 +73,6 @@ class TracingMessengerSyncCest
 
         $I->assertEquals(false, $span->isSuccessful(), 'TODO');
         $I->assertInstanceOf(\RuntimeException::class, $span->getError(), 'TODO');
-
-        $I->assertEquals('messenger', $span->context->target['type'], 'TODO');
-        $I->assertEquals('transport-sync', $span->context->target['name'], 'TODO');
 
         $I->assertNotEmpty($span->context->message['name'], 'TODO');
         $I->assertEquals('transport-sync', $span->context->message['queue_name'], 'TODO');

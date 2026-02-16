@@ -22,11 +22,16 @@ class Configuration implements ConfigurationInterface
     {
         $tree = new TreeBuilder($this->name);
         $node = $tree->getRootNode()->addDefaultsIfNotSet()->children();
-
-        $this->nodeDynamicEnabled($node, 'enabled', false);
+        $node->booleanNode('enabled')->defaultFalse();
 
         $tracingNode = $node->arrayNode('tracing')->addDefaultsIfNotSet()->children();
-        $this->nodeDynamicEnabled($tracingNode, 'enabled', false);
+        $tracingNode->booleanNode('enabled')->defaultFalse();
+
+        $bridgeNode = $node->arrayNode('bridge')->addDefaultsIfNotSet()->children();
+
+        $elasticApmNode = $bridgeNode->arrayNode('elastic_apm')->addDefaultsIfNotSet()->children();
+        $this->nodeDynamicEnabled($elasticApmNode, 'enabled', false);
+        $this->nodeDynamicEnabled($elasticApmNode, 'use_span_compression', false);
 
         $profilingNode = $node->arrayNode('profiling')->addDefaultsIfNotSet()->children();
         $this->nodeDynamicEnabled($profilingNode, 'enabled', false);

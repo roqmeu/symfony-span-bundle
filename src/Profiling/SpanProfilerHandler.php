@@ -45,7 +45,7 @@ class SpanProfilerHandler
             $span = $event->trace->getSpan();
 
             if ($span !== null && $this->isAllowedSpan($span)) {
-                $this->profiler->start($span->getId());
+                $this->profiler->start(\spl_object_hash($span));
             }
         }
     }
@@ -55,10 +55,10 @@ class SpanProfilerHandler
         if ($this->enabled && $this->profiler !== null) {
             $span = $event->trace->getSpan();
 
-            if ($span !== null && $this->profiler->has($span->getId())) {
-                $this->profiler->stop($span->getId());
+            if ($span !== null && $this->profiler->has(\spl_object_hash($span))) {
+                $this->profiler->stop(\spl_object_hash($span));
 
-                $this->profiler->send($span->getId());
+                $this->profiler->send(\spl_object_hash($span));
             }
         }
     }

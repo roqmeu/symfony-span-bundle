@@ -145,7 +145,7 @@ class SpanExcimerProfiler implements SpanProfiler, ResetInterface
         $frames = $speedscopeData['shared']['frames'];
         $samplesCount = \count($samples);
 
-        $parent = new Span('SpanProfiler', SpanBundle::SPAN_TYPE_INTERNAL, SpanBundle::SPAN_SUBTYPE_PROFILE);
+        $parent = new Span(SpanBundle::SPAN_TYPE_INTERNAL, SpanBundle::SPAN_SUBTYPE_PROFILE);
         $parent->setStartTime($start);
 
         $nextIdx = 0;
@@ -160,7 +160,7 @@ class SpanExcimerProfiler implements SpanProfiler, ResetInterface
             $duration = $weights[$idx];
             $stacktrace = [];
 
-            for ($stacktraceIdx = \count($sample) - 2; $stacktraceIdx >= 0; $stacktraceIdx--) {
+            for ($stacktraceIdx = \count($sample) - 1; $stacktraceIdx >= 0; $stacktraceIdx--) {
                 $name = $frames[$sample[$stacktraceIdx]]['name'];
                 $stacktrace[] = $name;
 
@@ -185,7 +185,7 @@ class SpanExcimerProfiler implements SpanProfiler, ResetInterface
             $duration *= 0.001 * 0.001 * 0.001;
 
             if ($duration > $this->period) {
-                $span = new Span($frames[$nameIdx]['name'], SpanBundle::SPAN_TYPE_INTERNAL, SpanBundle::SPAN_SUBTYPE_PROFILE);
+                $span = new Span(SpanBundle::SPAN_TYPE_INTERNAL, SpanBundle::SPAN_SUBTYPE_PROFILE);
 
                 $span->setStartTime($start);
                 $span->context->profile = ['stacktrace' => $stacktrace];

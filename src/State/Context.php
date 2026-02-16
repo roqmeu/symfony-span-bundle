@@ -37,14 +37,6 @@ class Context
 
     /**
      * @var array{
-     *     type?: ?string,
-     *     name?: ?string,
-     * }|null
-     */
-    public ?array $target = null;
-
-    /**
-     * @var array{
      *     method?: ?string,
      *     route?: ?string,
      *     url?: array{

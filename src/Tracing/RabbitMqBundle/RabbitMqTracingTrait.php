@@ -12,9 +12,9 @@ trait RabbitMqTracingTrait
 {
     use SpanTracerAwareTrait;
 
-    private ?RabbitMqConnectionMetadataRegistry $spanBundleRegistry = null;
+    protected ?RabbitMqConnectionMetadataRegistry $spanBundleRegistry = null;
 
-    private ?string $spanBundleConnectionName = null;
+    protected ?string $spanBundleConnectionName = null;
 
     public function spanBundleSetRegistry(?RabbitMqConnectionMetadataRegistry $registry = null): void
     {

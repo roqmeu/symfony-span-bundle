@@ -10,8 +10,14 @@ class SpanStartedEvent
 {
     public Span $span;
 
-    public function __construct(Span $span)
+    public ?\Closure $propagationInjector;
+
+    public ?\Closure $propagationExtractor;
+
+    public function __construct(Span $span, ?\Closure $propagationInjector = null, ?\Closure $propagationExtractor = null)
     {
         $this->span = $span;
+        $this->propagationInjector = $propagationInjector;
+        $this->propagationExtractor = $propagationExtractor;
     }
 }

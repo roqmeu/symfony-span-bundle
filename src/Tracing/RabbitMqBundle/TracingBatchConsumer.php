@@ -22,22 +22,16 @@ class TracingBatchConsumer extends BatchConsumer
         $wrappedCallback = function (array $messages) use ($callback) {
             $queueName = $this->resolveQueueName($this->queueOptions['name'] ?? null);
 
-            $span = new Span(SpanBundle::UNKNOWN, SpanBundle::SPAN_TYPE_CONSUMER, SpanBundle::SPAN_SUBTYPE_RABBITMQ);
-            $span->setName("CONSUME batch from {$queueName}");
+            $span = new Span(SpanBundle::SPAN_TYPE_CONSUMER, SpanBundle::SPAN_SUBTYPE_RABBITMQ);
 
-            $span->context->target = [
-                'type' => SpanBundle::SPAN_SUBTYPE_RABBITMQ,
-                'name' => $queueName,
-            ];
             $span->context->message = [
                 'consumer_name' => $this->resolveConsumerName($callback),
-                'name' => SpanBundle::UNKNOWN,
                 'queue_name' => $queueName,
             ];
 
             $this->fillServerContext($span);
 
-            $this->spanTracer->startSpanWithTrace($span);
+            $this->spanTracer->startTraceSpan($span);
 
             try {
                 return \call_user_func($callback, $messages);

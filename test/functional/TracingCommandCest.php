@@ -26,33 +26,25 @@ class TracingCommandCest
 
         $span = $startedSpans[0]->span;
 
-        $I->assertEqualsCanonicalizing(
-            $span->context->command,
-            ['name' => 'app:test:command-ok'],
-            'TODO'
-        );
-        $I->assertEqualsCanonicalizing(
-            $span->context->framework,
-            [
-                'debug' => false,
-                'environment' => 'test',
-                'framework' => 'symfony',
-                'version' => Kernel::VERSION
-            ],
-            'TODO'
-        );
-        $I->assertEqualsCanonicalizing(
-            $span->context->process,
-            [
-                'executable' => '/usr/local/bin/php',
-                'interactive' => \posix_isatty(\STDIN) || \posix_isatty(\STDOUT),
-                'pid' => \posix_getpid(),
-                'parent_pid' => \posix_getppid(),
-                'runtime_name' => 'cli',
-                'runtime_version' => PHP_VERSION
-            ],
-            'TODO'
-        );
+        $I->assertEquals('app:test:command-ok', $span->context->command['name'] ?? null);
+
+        $I->assertEqualsCanonicalizing($span->context->command, [
+            'name' => 'app:test:command-ok'
+        ]);
+        $I->assertEqualsCanonicalizing($span->context->framework, [
+            'debug' => false,
+            'environment' => 'test',
+            'framework' => 'symfony',
+            'version' => Kernel::VERSION
+        ]);
+        $I->assertEqualsCanonicalizing($span->context->process, [
+            'executable' => '/usr/local/bin/php',
+            'interactive' => \posix_isatty(\STDIN) || \posix_isatty(\STDOUT),
+            'pid' => \posix_getpid(),
+            'parent_pid' => \posix_getppid(),
+            'runtime_name' => 'cli',
+            'runtime_version' => PHP_VERSION
+        ]);
     }
 
     public function testError(FunctionalTester $I): void
@@ -65,8 +57,10 @@ class TracingCommandCest
 
         $this->assertEventsCounts($I, $allEvents, 1, 1);
 
-        $event = $startedSpans[0];
+        $span = $startedSpans[0]->span;
 
-        $I->assertInstanceOf(\RuntimeException::class, $event->span->getError(), 'Ожидали RuntimeException');
+        $I->assertEquals('app:test:command-fail', $span->context->command['name'] ?? null);
+
+        $I->assertInstanceOf(\RuntimeException::class, $span->getError(), 'Ожидали RuntimeException');
     }
 }

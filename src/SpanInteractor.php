@@ -17,7 +17,7 @@ interface SpanInteractor
 
     public function endTrace(Trace $trace): void;
 
-    public function startSpan(Span $span): void;
+    public function startSpan(Span $span, ?\Closure $propagationInjector = null, ?\Closure $propagationExtractor = null): void;
 
     public function endSpan(Span $span): void;
 }

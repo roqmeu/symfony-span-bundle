@@ -39,13 +39,19 @@ class TracingMiddleware extends AbstractTracingHttpClient
             return $fn($request, $options);
         }
 
-        $span = $this->requestSpanStart($request->getMethod(), $request->getUri());
+        $span = $this->makeRequestSpan($request->getMethod(), $request->getUri());
+
+        $this->spanTracer->startSpan($span, static function (string $key, string $value) use (&$request): void {
+            if (!$request->hasHeader($key)) {
+                $request = $request->withHeader($key, $value);
+            }
+        });
 
         return $fn($request, $options)->then(
             function (ResponseInterface $response) use ($span) {
                 $statusCode = $response->getStatusCode();
 
-                $span->context->http_response['status_code'] = $statusCode;
+                $span->context->http_response = ['status_code' => $statusCode];
 
                 $span->setSuccessfulIf($statusCode >= 100 && $statusCode < 400);
 

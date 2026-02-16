@@ -5,72 +5,147 @@ declare(strict_types=1);
 namespace Roqmeu\SpanBundle\Bridge;
 
 use Elastic\Apm\ElasticApm;
-use Elastic\Apm\ExecutionSegmentInterface as ElasticExecutionSegmentInterface;
-use Elastic\Apm\Impl\Span as ElasticSpanImpl;
+use Elastic\Apm\ExecutionSegmentInterface;
+use Elastic\Apm\Impl\Span;
 use Elastic\Apm\Impl\StackTraceFrame;
-use Elastic\Apm\SpanInterface as ElasticSpanInterface;
-use Elastic\Apm\TransactionInterface as ElasticTransactionInterface;
+use Elastic\Apm\SpanInterface;
+use Elastic\Apm\TransactionInterface;
 use Roqmeu\SpanBundle\SpanBundle;
-use Roqmeu\SpanBundle\State\Span;
-use Roqmeu\SpanBundle\State\Trace;
+use Roqmeu\SpanBundle\State\Span as BundleSpan;
+use Roqmeu\SpanBundle\Transport\Event\SpanStartedEvent;
 use Roqmeu\SpanBundle\Transport\Event\TraceEndedEvent;
+use Symfony\Contracts\Service\ResetInterface;
 
 /**
- * Экспорт SpanBundle trace в Elastic APM.
- *
- * Единицы измерения времени в Elastic APM PHP Agent:
- * - $timestamp (beginTransaction/beginChildSpan): микросекунды от Unix epoch (@see ElasticApmBridge::secondsToMicros)
- * - $duration (end()): миллисекунды с точностью до 3 знаков после запятой(@see ElasticApmBridge::secondsToMillis)
- *
- * Noop/sampling: если isNoop() или !isSampled(), контекст и дочерние спаны не экспортируются.
- *
- * @see https://github.com/elastic/apm/tree/main/specs/agents — спецификации Elastic APM agent
+ * @see https://github.com/elastic/apm/tree/main/specs/agents — Elastic APM agent specifications
  */
-class ElasticApmBridge
+class ElasticApmBridge implements ResetInterface
 {
     /**
-     * Экспорт завершённого trace в Elastic APM.
-     *
-     * Маппинг SpanBundle -> Elastic APM:
-     * - Root span -> Transaction
-     * - Child spans -> Span
+     * @var array<int, TransactionInterface>
      */
+    protected array $transactions = [];
+
+    /**
+     * @var array<int, SpanInterface>
+     */
+    protected array $spans = [];
+
+    protected bool $enabled;
+
+    protected bool $isUseSpanCompression;
+
+    public function __construct(bool $enabled = false, bool $isUseSpanCompression = false)
+    {
+        $this->enabled = $enabled && \class_exists('Elastic\Apm\ElasticApm');
+        $this->isUseSpanCompression = $isUseSpanCompression;
+
+        if ($this->enabled) {
+            $this->discardUnknownTransaction();
+        }
+    }
+
+    public function reset(): void
+    {
+        $this->transactions = [];
+
+        $this->spans = [];
+    }
+
+    public function onSpanStarted(SpanStartedEvent $event): void
+    {
+        if (!$this->enabled) {
+            return;
+        }
+
+        $injector = $event->propagationInjector;
+        $extractor = $event->propagationExtractor;
+
+        if ($injector === null && $extractor === null) {
+            return;
+        }
+
+        $bundleSpan = $event->span;
+        $bundleTrace = $bundleSpan->getTrace();
+        $bundleTraceSpan = $bundleSpan->getTraceSpan();
+
+        if ($bundleTrace === null || $bundleTraceSpan === null) {
+            return;
+        }
+
+        $transaction = $this->getTransactionStub($bundleTraceSpan, $extractor);
+
+        if ($transaction === null || $injector === null || $transaction->isNoop()) {
+            return;
+        }
+
+        if ($this->isUseSpanCompression || !$transaction->isSampled()) {
+            $transaction->injectDistributedTracingHeaders($injector);
+
+            return;
+        }
+
+        $defaultStartTime = $bundleTraceSpan->getStartTime();
+
+        if ($defaultStartTime === null) {
+            return;
+        }
+
+        $span = $this->getSpanStubWithParent($transaction, $bundleSpan, $defaultStartTime);
+
+        $span->injectDistributedTracingHeaders($injector);
+    }
+
     public function onTraceEnded(TraceEndedEvent $event): void
     {
-        if (!class_exists('Elastic\Apm\ElasticApm')) {
+        if (!$this->enabled) {
             return;
         }
 
-        // Отменяем автоинструментированную транзакцию Elastic APM
-        ElasticApm::getCurrentTransaction()->discard();
+        $this->discardUnknownTransaction();
 
-        $trace = $event->trace;
+        $bundleTrace = $event->trace;
+        $bundleSpan = $bundleTrace->getSpan();
 
-        $span = $trace->getSpan();
-
-        if ($span === null || $span->getStartTime() === null) {
+        if ($bundleSpan === null || $bundleSpan->getStartTime() === null) {
             return;
         }
 
-        $defaultStartTime = $span->getStartTime();
-        $defaultEndTime = $span->getEndTime() ?? \microtime(true);
+        $defaultStartTime = $bundleSpan->getStartTime();
+        $defaultEndTime = $bundleSpan->getEndTime() ?? \microtime(true);
 
         if ($defaultEndTime < $defaultStartTime) {
             return;
         }
 
-        $segment = $this->createElasticTransaction($trace, $span, $defaultStartTime);
+        $transaction = $this->getTransactionStub($bundleSpan);
 
-        if ($segment->isNoop() || !$segment->isSampled()) {
-            $this->endElasticSegment($span, $segment, $defaultStartTime, $defaultEndTime);
+        if ($transaction === null) {
+            return;
+        }
+
+        if ($transaction->isNoop()) {
+            $this->endSegment($bundleSpan, $transaction, $defaultStartTime, $defaultEndTime);
+
+            unset($this->transactions[\spl_object_id($bundleTrace)]);
 
             return;
         }
 
-        $spanStack = [$span];
-        $segmentStack = [$segment];
+        $this->fillTransaction($bundleSpan, $transaction);
 
-        foreach ($span->iterateChildrenEuler() as $childSpan) {
+        if (!$transaction->isSampled()) {
+            $this->endSegment($bundleSpan, $transaction, $defaultStartTime, $defaultEndTime);
+
+            unset($this->transactions[\spl_object_id($bundleTrace)]);
+
+            return;
+        }
+
+        $spanStack = [$bundleSpan];
+        $segmentStack = [$transaction];
+
+        foreach ($bundleSpan->iterateChildrenEuler() as $bundleSpanChild) {
             $spanStackEnd = \end($spanStack);
             $segmentStackEnd = \end($segmentStack);
 
@@ -78,125 +153,181 @@ class ElasticApmBridge
                 continue;
             }
 
-            if ($spanStackEnd !== $childSpan) {
-                $spanStack[] = $childSpan;
-                $segmentStack[] = $this->createElasticSpan($childSpan, $segmentStackEnd, $defaultStartTime);
+            if ($spanStackEnd !== $bundleSpanChild) {
+                $spanStack[] = $bundleSpanChild;
+                $segmentStack[] = $this->fillSpan($bundleSpanChild, $this->getSpanStub($segmentStackEnd, $bundleSpanChild, $defaultStartTime));
             } else {
                 \array_pop($spanStack);
                 \array_pop($segmentStack);
 
-                $this->endElasticSegment($childSpan, $segmentStackEnd, $defaultStartTime, $defaultEndTime);
+                $this->endSegment($bundleSpanChild, $segmentStackEnd, $defaultStartTime, $defaultEndTime);
+
+                unset($this->spans[\spl_object_id($bundleSpanChild)]);
             }
         }
 
-        $this->endElasticSegment($span, $segment, $defaultStartTime, $defaultEndTime);
+        $this->endSegment($bundleSpan, $transaction, $defaultStartTime, $defaultEndTime);
+
+        unset($this->transactions[\spl_object_id($bundleTrace)]);
     }
 
-    /**
-     * Создаёт Elastic APM Transaction из корневого спана.
-     *
-     * Transaction types:
-     * - server+http -> request, name = "<METHOD> <route>" или "<METHOD> unknown route"
-     * - consumer    -> messaging, name = "<Framework> RECEIVE from <queue>"
-     * - console     -> cli, name = command name
-     * - прочее      -> custom
-     */
-    private function createElasticTransaction(Trace $trace, Span $span, float $defaultStartTime): ElasticTransactionInterface
+    protected function getTransactionStub(BundleSpan $bundleSpan, ?\Closure $extractor = null): ?TransactionInterface
     {
-        $name = $span->getName();
-        $type = 'custom';
-        $result = null;
+        $trace = $bundleSpan->getTrace();
 
-        if ($span->getType() === SpanBundle::SPAN_TYPE_SERVER && $span->getSubtype() === SpanBundle::SPAN_SUBTYPE_HTTP) {
-            $method = \strtoupper($span->context->http_request['method'] ?? '');
+        if ($trace === null) {
+            return null;
+        }
 
-            $route = $span->context->http_request['route'] ?? '';
+        $transaction = $this->transactions[\spl_object_id($trace)] ?? null;
 
-            if ($route !== '') {
-                $name = \trim(($method !== '' ? $method . ' ' : '') . $route);
-            } elseif ($method !== '') {
-                $name = $method . ' unknown route';
-            } else {
-                $name = 'unknown route';
+        if ($transaction !== null) {
+            return $transaction;
+        }
+
+        if ($bundleSpan->getStartTime() === null) {
+            return null;
+        }
+
+        $this->discardUnknownTransaction();
+
+        $builder = ElasticApm::newTransaction('unnamed', 'custom');
+        $builder->timestamp($this->secondsToMicros($bundleSpan->getStartTime()));
+
+        if ($extractor !== null) {
+            $builder->distributedTracingHeaderExtractor($extractor);
+        }
+
+        return $this->transactions[\spl_object_id($trace)] = $builder->begin();
+    }
+
+    protected function discardUnknownTransaction(): void
+    {
+        $transaction = ElasticApm::getCurrentTransaction();
+
+        if (!\in_array($transaction, $this->transactions, true)) {
+            $transaction->discard();
+        }
+    }
+
+    protected function getSpanStubWithParent(ExecutionSegmentInterface $segment, BundleSpan $bundleSpan, float $defaultStartTime): SpanInterface
+    {
+        $stack = [$bundleSpan];
+        $bundleSpan = $bundleSpan->getParent();
+
+        while ($bundleSpan !== null) {
+            $bundleSpanParent = $bundleSpan->getParent();
+
+            if ($bundleSpanParent === null) {
+                break;
             }
 
-            $statusCode = $span->context->http_response['status_code'] ?? null;
+            $segmentParent = $this->spans[\spl_object_id($bundleSpan)] ?? null;
+
+            if ($segmentParent !== null) {
+                $segment = $segmentParent;
+
+                break;
+            }
+
+            $stack[] = $bundleSpan;
+            $bundleSpan = $bundleSpanParent;
+        }
+
+        for ($idx = count($stack) - 1; $idx >= 1; $idx--) {
+            $segment = $this->getSpanStub($segment, $stack[$idx], $defaultStartTime);
+        }
+
+        return $this->getSpanStub($segment, $stack[0], $defaultStartTime);
+    }
+
+    protected function getSpanStub(ExecutionSegmentInterface $segment, BundleSpan $bundleSpan, float $defaultStartTime): SpanInterface
+    {
+        $span = $this->spans[\spl_object_id($bundleSpan)] ?? null;
+
+        if ($span !== null) {
+            return $span;
+        }
+
+        $span = $segment->beginChildSpan('unnamed', 'custom', null, null, $this->secondsToMicros($bundleSpan->getStartTime() ?? $defaultStartTime));
+
+        if ($this->isUseSpanCompression && \method_exists($span, 'setCompressible')) {
+            $span->setCompressible(true);
+        }
+
+        return $this->spans[\spl_object_id($bundleSpan)] = $span;
+    }
+
+    protected function fillTransaction(BundleSpan $bundleSpan, TransactionInterface $transaction): TransactionInterface
+    {
+        $transactionName = null;
+        $transactionType = null;
+        $transactionResult = null;
+
+        if ($bundleSpan->getType() === SpanBundle::SPAN_TYPE_SERVER && $bundleSpan->getSubtype() === SpanBundle::SPAN_SUBTYPE_HTTP) {
+            $method = \strtoupper($bundleSpan->context->http_request['method'] ?? '');
+
+            $route = $bundleSpan->context->http_request['route'] ?? '';
+
+            if ($route === '') {
+                $route = 'unknown route';
+            }
+
+            $transactionName = "{$method} {$route}";
+
+            $statusCode = $bundleSpan->context->http_response['status_code'] ?? null;
 
             if (\is_int($statusCode) && $statusCode > 0) {
                 $statusCode = \intdiv($statusCode, 100);
 
                 if ($statusCode > 0) {
-                    $result = "HTTP {$statusCode}xx";
+                    $transactionResult = "HTTP {$statusCode}xx";
                 }
             }
 
-            $type = 'request';
-        } elseif ($span->getType() === SpanBundle::SPAN_TYPE_CONSUMER) {
-            $framework = $span->getSubtype() ?? $span->context->target['type'] ?? '';
-            $queue = $span->context->message['queue_name'] ?? $span->context->target['name'] ?? '';
+            $transactionType = 'request';
+        } elseif ($bundleSpan->getType() === SpanBundle::SPAN_TYPE_CONSUMER) {
+            $framework = $bundleSpan->getSubtype() ?? '';
+            $queue = $bundleSpan->context->message['queue_name'] ?? '';
 
-            $name = $this->makeSegmentMessagingName('RECEIVE', 'from', $framework, $queue);
+            $transactionName = $this->makeMessagingSegmentName('RECEIVE', 'from', $framework, $queue);
 
-            $type = 'messaging';
-        } elseif ($span->getType() === SpanBundle::SPAN_TYPE_CONSOLE) {
-            $commandName = $span->context->command['name'] ?? '';
+            $transactionType = 'messaging';
+        } elseif ($bundleSpan->getType() === SpanBundle::SPAN_TYPE_CONSOLE) {
+            $commandName = $bundleSpan->context->command['name'] ?? '';
 
             if ($commandName !== '') {
-                $name = $commandName;
+                $transactionName = $commandName;
             }
 
-            $type = 'cli';
+            $transactionType = 'cli';
         }
 
-        if ($name === '') {
-            $name = 'unnamed';
+        if ($transactionName === null || $transactionName === '') {
+            $transactionName = 'unnamed';
+        }
+        if ($transactionType === null) {
+            $transactionType = 'custom';
         }
 
-        $elasticTransactionBuilder = ElasticApm::newTransaction($name, $type)->timestamp($this->secondsToMicros($span->getStartTime() ?? $defaultStartTime));
+        $transaction->setName($transactionName);
+        $transaction->setType($transactionType);
+        $transaction->setResult($transactionResult);
 
-        $traceId = $trace->getId();
-        $traceParentId = $trace->getParent();
+        $transaction->setOutcome($bundleSpan->isSuccessful() ? 'success' : 'failure');
 
-        if ($traceParentId !== null) {
-            $elasticTransactionBuilder->distributedTracingHeaderExtractor(
-                static function (string $headerName) use ($traceId, $traceParentId): ?string {
-                    if ($headerName === 'traceparent') {
-                        return "00-{$traceId}-{$traceParentId}-01";
-                    }
+        $this->fillTransactionContext($bundleSpan, $transaction);
 
-                    return null;
-                }
-            );
-        }
-
-        $elasticTransaction = $elasticTransactionBuilder->begin();
-
-        if ($elasticTransaction->isNoop() || !$elasticTransaction->isSampled()) {
-            return $elasticTransaction;
-        }
-
-        $this->fillTransactionContext($span, $elasticTransaction);
-
-        $elasticTransaction->setResult($result);
-
-        $elasticTransaction->setOutcome($span->isSuccessful() ? 'success' : 'failure');
-
-        $error = $span->getError();
+        $error = $bundleSpan->getError();
 
         if ($error !== null) {
-            $elasticTransaction->createErrorFromThrowable($error);
+            $transaction->createErrorFromThrowable($error);
         }
 
-        return $elasticTransaction;
+        return $transaction;
     }
 
-    /**
-     * Заполняет контекст транзакции (labels, request).
-     *
-     * Labels (php_*): framework info, process info, command name.
-     * Request context: method, url (для HTTP server транзакций).
-     */
-    private function fillTransactionContext(Span $span, ElasticTransactionInterface $elasticTransaction): void
+    protected function fillTransactionContext(BundleSpan $span, TransactionInterface $elasticTransaction): void
     {
         $context = $elasticTransaction->context();
 
@@ -308,80 +439,80 @@ class ElasticApmBridge
         }
     }
 
-    private function createElasticSpan(Span $span, ElasticExecutionSegmentInterface $elasticParent, float $defaultStartTime): ElasticSpanInterface
+    protected function fillSpan(BundleSpan $bundleSpan, SpanInterface $span): SpanInterface
     {
-        $name = $span->getName();
-
-        if ($name === '') {
-            $name = 'unnamed';
-        }
-
-        $elasticSpan = $elasticParent->beginChildSpan(
-            $name,
-            $this->mapToElasticSpanType($span),
-            $this->mapToElasticSpanSubtype($span),
-            $this->mapToElasticSpanAction($span),
-            $this->secondsToMicros($span->getStartTime() ?? $defaultStartTime)
-        );
-
-        if (\method_exists($elasticSpan, 'setCompressible')) {
-            $elasticSpan->setCompressible(true);
-        }
-
-        $this->fillElasticSpanContext($span, $elasticSpan);
-
-        $elasticSpan->setOutcome($span->isSuccessful() ? 'success' : 'failure');
-
-        $error = $span->getError();
-
-        if ($error !== null) {
-            $elasticSpan->createErrorFromThrowable($error);
-        }
-
-        return $elasticSpan;
-    }
-
-    private function fillElasticSpanContext(Span $span, ElasticSpanInterface $elasticSpan): void
-    {
-        $type = $span->getType();
-        $subtype = $span->getSubtype();
+        $type = $bundleSpan->getType();
+        $subtype = $bundleSpan->getSubtype();
+        $action = null;
 
         if ($type === SpanBundle::SPAN_TYPE_DB) {
-            $this->fillDbSpanContext($span, $elasticSpan);
-        } elseif ($type === SpanBundle::SPAN_TYPE_CLIENT && $subtype === SpanBundle::SPAN_SUBTYPE_HTTP) {
-            $this->fillHttpClientSpanContext($span, $elasticSpan);
-        } elseif ($type === SpanBundle::SPAN_TYPE_PRODUCER || $type === SpanBundle::SPAN_TYPE_CONSUMER) {
-            $this->fillMessagingSpanContext($span, $elasticSpan);
-        } elseif ($type === SpanBundle::SPAN_TYPE_INTERNAL && $subtype === SpanBundle::SPAN_SUBTYPE_PROFILE) {
-            $this->fillElasticSpanStackTrace($elasticSpan, $span->context->profile['stacktrace'] ?? []);
-        }
-    }
+            $this->fillDbSpan($bundleSpan, $span);
 
-    /**
-     * DB span: context.db.statement, service.target (type=subtype, name=instance).
-     */
-    private function fillDbSpanContext(Span $span, ElasticSpanInterface $elasticSpan): void
-    {
-        $context = $elasticSpan->context();
-
-        if ($span->context->db !== null) {
-            $dbStatement = $span->context->db['statement'] ?? '';
-
-            if ($dbStatement !== '') {
-                $elasticSpan->context()->db()->setStatement($dbStatement);
+            $type = 'db';
+        } elseif ($type === SpanBundle::SPAN_TYPE_CLIENT) {
+            if ($subtype === SpanBundle::SPAN_SUBTYPE_HTTP) {
+                $this->fillHttpClientSpan($bundleSpan, $span);
             }
 
-            $dbInstance = $span->context->db['instance'] ?? '';
+            $type = 'external';
+        } elseif ($type === SpanBundle::SPAN_TYPE_PRODUCER) {
+            $this->fillMessagingSpan($bundleSpan, $span);
 
-            $targetType = $span->getSubtype();
-            $targetName = $dbInstance !== '' ? $dbInstance : null;
+            $action = 'send';
+            $type = 'messaging';
+        } elseif ($type === SpanBundle::SPAN_TYPE_INTERNAL) {
+            if ($subtype === SpanBundle::SPAN_SUBTYPE_PROFILE) {
+                $this->fillProfilingSpan($bundleSpan, $span);
+            }
 
-            $this->fillSpanTargetContext($elasticSpan, $targetType, $targetName);
+            $type = 'app';
         }
 
-        if ($span->context->server !== null) {
-            $serverHost = $span->context->server['host'] ?? '';
-            $serverPort = $span->context->server['port'] ?? 0;
+        if ($type === '') {
+            $type = 'custom';
+        }
+
+        $span->setType($type);
+        $span->setSubtype($subtype ?: null);
+        $span->setAction($action ?: null);
+
+        $span->setOutcome($bundleSpan->isSuccessful() ? 'success' : 'failure');
+
+        $error = $bundleSpan->getError();
+
+        if ($error !== null) {
+            $span->createErrorFromThrowable($error);
+        }
+
+        return $span;
+    }
+
+    protected function fillDbSpan(BundleSpan $bundleSpan, SpanInterface $span): void
+    {
+        $context = $span->context();
+
+        if ($bundleSpan->context->db !== null) {
+            $dbStatement = $bundleSpan->context->db['statement'] ?? '';
+
+            if ($dbStatement !== '') {
+                $context->db()->setStatement($dbStatement);
+            }
+
+            $dbInstance = $bundleSpan->context->db['instance'] ?? '';
+
+            if ($dbStatement !== '' && $dbInstance !== '') {
+                $span->setName($this->makeSqlSpanName($dbInstance, $dbStatement));
+            }
+
+            $targetType = $bundleSpan->getSubtype();
+            $targetName = $dbInstance !== '' ? $dbInstance : null;
+
+            $this->fillSpanTarget($span, $targetType, $targetName);
+        }
+
+        if ($bundleSpan->context->server !== null) {
+            $serverHost = $bundleSpan->context->server['host'] ?? '';
+            $serverPort = $bundleSpan->context->server['port'] ?? 0;
 
             if ($serverHost !== '') {
                 $context->setLabel('server_host', $serverHost);
@@ -392,21 +523,18 @@ class ElasticApmBridge
         }
     }
 
-    /**
-     * HTTP client span: context.http (url, method, status_code), service.target (type=http, name=host:port).
-     */
-    private function fillHttpClientSpanContext(Span $span, ElasticSpanInterface $elasticSpan): void
+    protected function fillHttpClientSpan(BundleSpan $bundleSpan, SpanInterface $span): void
     {
-        $http = $elasticSpan->context()->http();
+        $http = $span->context()->http();
 
-        if ($span->context->http_request !== null) {
-            $requestMethod = $span->context->http_request['method'] ?? '';
+        if ($bundleSpan->context->http_request !== null) {
+            $requestMethod = $bundleSpan->context->http_request['method'] ?? '';
 
             if ($requestMethod !== '') {
                 $http->setMethod($requestMethod);
             }
 
-            $requestUrl = $span->context->http_request['url'] ?? null;
+            $requestUrl = $bundleSpan->context->http_request['url'] ?? null;
 
             if ($requestUrl !== null) {
                 $requestUrlDomain = $requestUrl['domain'] ?? '';
@@ -414,48 +542,48 @@ class ElasticApmBridge
                 $requestUrlPort = $requestUrl['port'] ?? 0;
                 $requestUrlScheme = $requestUrl['scheme'] ?? '';
 
-                if ($requestUrlScheme !== '' && $requestUrlDomain !== '') {
-                    $fullUrl = $requestUrlScheme . '://' . $requestUrlDomain . ($requestUrlPort > 0 ? ':' . $requestUrlPort : '') . $requestUrlPath;
+                if ($requestUrlDomain !== '') {
+                    $targetName = $requestUrlDomain . ($requestUrlPort > 0 ? ':' . $requestUrlPort : '');
+                } else {
+                    $targetName = '';
+                }
 
-                    $http->setUrl($fullUrl);
+                if ($targetName !== '') {
+                    if ($requestUrlScheme !== '') {
+                        $http->setUrl($requestUrlScheme . '://' . $targetName . $requestUrlPath);
+                    }
+
+                    $this->fillSpanTarget($span, 'http', $targetName, true);
+
+                    $span->setName("$requestMethod $targetName");
                 }
             }
         }
 
-        if ($span->context->http_response !== null) {
-            $responseStatusCode = $span->context->http_response['status_code'] ?? 0;
+        if ($bundleSpan->context->http_response !== null) {
+            $responseStatusCode = $bundleSpan->context->http_response['status_code'] ?? 0;
 
             if ($responseStatusCode > 0) {
                 $http->setStatusCode($responseStatusCode);
             }
         }
-
-        if ($span->context->target !== null) {
-            $targetType = 'http';
-            $targetName = $span->context->target['name'] ?? null;
-
-            $this->fillSpanTargetContext($elasticSpan, $targetType, $targetName, true);
-        }
     }
 
-    /**
-     * Messaging span: labels (consumer_name, name, retry_attempt, retry_delay), service.target (type=subtype, name=queue).
-     */
-    private function fillMessagingSpanContext(Span $span, ElasticSpanInterface $elasticSpan): void
+    protected function fillMessagingSpan(BundleSpan $bundleSpan, SpanInterface $span): void
     {
-        $framework = $span->getSubtype() ?? $span->context->target['type'] ?? '';
-        $queue = $span->context->message['queue_name'] ?? $span->context->target['name'] ?? '';
+        $framework = $bundleSpan->getSubtype() ?? '';
+        $queue = $bundleSpan->context->message['queue_name'] ?? '';
 
-        $elasticSpan->setName($this->makeSegmentMessagingName('SEND', 'to', $framework, $queue));
+        $span->setName($this->makeMessagingSegmentName('SEND', 'to', $framework, $queue));
 
-        $context = $elasticSpan->context();
+        $context = $span->context();
 
-        if ($span->context->message !== null) {
-            $messageQueueName = $span->context->message['queue_name'] ?? '';
-            $messageConsumerName = $span->context->message['consumer_name'] ?? '';
-            $messageName = $span->context->message['name'] ?? '';
-            $messageRetryAttempt = $span->context->message['retry_attempt'] ?? 0;
-            $messageRetryDelay = $span->context->message['retry_delay'] ?? 0;
+        if ($bundleSpan->context->message !== null) {
+            $messageQueueName = $bundleSpan->context->message['queue_name'] ?? '';
+            $messageConsumerName = $bundleSpan->context->message['consumer_name'] ?? '';
+            $messageName = $bundleSpan->context->message['name'] ?? '';
+            $messageRetryAttempt = $bundleSpan->context->message['retry_attempt'] ?? 0;
+            $messageRetryDelay = $bundleSpan->context->message['retry_delay'] ?? 0;
 
             if ($messageConsumerName !== '') {
                 $context->setLabel('message_consumer_name', $messageConsumerName);
@@ -470,15 +598,15 @@ class ElasticApmBridge
                 $context->setLabel('message_retry_delay', $messageRetryDelay);
             }
 
-            $targetType = $span->getSubtype();
+            $targetType = $bundleSpan->getSubtype();
             $targetName = $messageQueueName !== '' ? $messageQueueName : null;
 
-            $this->fillSpanTargetContext($elasticSpan, $targetType, $targetName);
+            $this->fillSpanTarget($span, $targetType, $targetName);
         }
 
-        if ($span->context->server !== null) {
-            $serverHost = $span->context->server['host'] ?? '';
-            $serverPort = $span->context->server['port'] ?? 0;
+        if ($bundleSpan->context->server !== null) {
+            $serverHost = $bundleSpan->context->server['host'] ?? '';
+            $serverPort = $bundleSpan->context->server['port'] ?? 0;
 
             if ($serverHost !== '') {
                 $context->setLabel('server_host', $serverHost);
@@ -489,20 +617,37 @@ class ElasticApmBridge
         }
     }
 
+    protected function fillProfilingSpan(BundleSpan $bundleSpan, SpanInterface $span): void
+    {
+        $span->setName('Profile');
+
+        $stacktrace = $bundleSpan->context->profile['stacktrace'] ?? [];
+
+        if ($stacktrace !== []) {
+            $this->fillSpanStacktrace($span, $stacktrace);
+
+            $name = $stacktrace[0] ?? '';
+
+            if ($name !== '') {
+                $span->setName($name);
+            }
+        }
+    }
+
     /**
      * Заполняет service.target и destination.service.resource.
      *
-     * destination.service.resource (deprecated, но требуется для совместимости):
-     * - external type: resource = targetName (host:port для HTTP)
+     * destination.service.resource (требуется для совместимости):
+     * - external type: resource = targetName
      * - иначе: resource = targetType/targetName или targetType
      */
-    private function fillSpanTargetContext(ElasticSpanInterface $elasticSpan, ?string $targetType, ?string $targetName, bool $external = false): void
+    protected function fillSpanTarget(SpanInterface $span, ?string $targetType, ?string $targetName, bool $external = false): void
     {
         if ($targetType === null && $targetName === null) {
             return;
         }
 
-        $context = $elasticSpan->context();
+        $context = $span->context();
 
         if (\method_exists($context, 'service')) {
             $context->service()->target()->setType($targetType);
@@ -517,56 +662,20 @@ class ElasticApmBridge
             $destination = "{$targetType}/{$targetName}";
         }
 
-        $elasticSpan->context()->destination()->setService('', $destination, '');
+        $span->context()->destination()->setService('', $destination, '');
     }
 
-    private function mapToElasticSpanType(Span $span): string
-    {
-        switch ($span->getType()) {
-            case SpanBundle::SPAN_TYPE_DB:
-                return 'db';
-            case SpanBundle::SPAN_TYPE_CLIENT:
-                return 'external';
-            case SpanBundle::SPAN_TYPE_PRODUCER:
-            case SpanBundle::SPAN_TYPE_CONSUMER:
-                return 'messaging';
-            case SpanBundle::SPAN_TYPE_INTERNAL:
-                return 'app';
-            default:
-                return $span->getType() !== '' ? $span->getType() : 'custom';
-        }
-    }
-
-    private function mapToElasticSpanSubtype(Span $span): ?string
-    {
-        $subtype = $span->getSubtype();
-
-        return $subtype !== '' ? $subtype : null;
-    }
-
-    private function mapToElasticSpanAction(Span $span): ?string
-    {
-        switch ($span->getType()) {
-            case SpanBundle::SPAN_TYPE_PRODUCER:
-                return 'send';
-            case SpanBundle::SPAN_TYPE_CONSUMER:
-                return 'receive';
-            default:
-                return null;
-        }
-    }
-
-    private function fillElasticSpanStackTrace(ElasticSpanInterface $elasticSpan, array $stacktrace): void
+    protected function fillSpanStacktrace(SpanInterface $span, array $stacktrace): void
     {
         if ($stacktrace === []) {
             return;
         }
 
-        if (!\class_exists(ElasticSpanImpl::class) || !\class_exists(StackTraceFrame::class)) {
+        if (!\class_exists(Span::class) || !\class_exists(StackTraceFrame::class)) {
             return;
         }
 
-        if (!$elasticSpan instanceof ElasticSpanImpl || !\property_exists($elasticSpan, 'stackTrace')) {
+        if (!$span instanceof Span || !\property_exists($span, 'stackTrace')) {
             return;
         }
 
@@ -589,10 +698,10 @@ class ElasticApmBridge
             $this->stackTrace = $stacktrace;
         };
 
-        $hack->call($elasticSpan, $elasticStackTrace);
+        $hack->call($span, $elasticStackTrace);
     }
 
-    private function makeSegmentMessagingName(string $operation, string $postfix, string $framework, string $queue): string
+    protected function makeMessagingSegmentName(string $operation, string $postfix, string $framework, string $queue): string
     {
         switch (\strtolower($framework)) {
             case SpanBundle::SPAN_SUBTYPE_RABBITMQ:
@@ -627,10 +736,7 @@ class ElasticApmBridge
         return "{$framework} {$operation}";
     }
 
-    /**
-     * Завершает Elastic APM segment с вычисленной duration (миллисекунды).
-     */
-    private function endElasticSegment(Span $span, ElasticExecutionSegmentInterface $elasticSegment, float $defaultStartTime, float $defaultEndTime): void
+    protected function endSegment(BundleSpan $span, ExecutionSegmentInterface $elasticSegment, float $defaultStartTime, float $defaultEndTime): void
     {
         $start = $this->secondsToMillis($span->getStartTime() ?? $defaultStartTime);
         $end = $this->secondsToMillis($span->getEndTime() ?? $defaultEndTime);
@@ -642,13 +748,71 @@ class ElasticApmBridge
         $elasticSegment->end($end - $start);
     }
 
-    private function secondsToMicros(float $seconds): float
+    protected function secondsToMicros(float $seconds): float
     {
         return \round($seconds * 1000 * 1000, 0, PHP_ROUND_HALF_UP);
     }
 
-    private function secondsToMillis(float $seconds): float
+    protected function secondsToMillis(float $seconds): float
     {
         return \round($seconds * 1000, 3, PHP_ROUND_HALF_UP);
+    }
+
+    protected function makeSqlSpanName(string $databaseName, string $sql): string
+    {
+        $sql = \trim($sql);
+
+        if (\preg_match('/^\s*(\w+)/', $sql, $matches) === 1) {
+            $operation = \strtoupper($matches[1]);
+
+            $tableName = $this->extractSqlTableName($sql, $operation);
+
+            if ($tableName !== null) {
+                return "{$operation} {$tableName}";
+            }
+        }
+
+        return "QUERY {$databaseName}";
+    }
+
+    protected function extractSqlTableName(string $sql, string $operation): ?string
+    {
+        $matches = [];
+
+        switch ($operation) {
+            case 'SELECT':
+                $result = \preg_match('/FROM\s+([^\s,;()]+)/i', $sql, $matches);
+                break;
+            case 'INSERT':
+                $result = \preg_match('/^\s*INSERT\s+INTO\s+([^\s,;()]+)/i', $sql, $matches);
+                break;
+            case 'UPDATE':
+                $result = \preg_match('/^\s*UPDATE\s+([^\s,;()]+)/i', $sql, $matches);
+                break;
+            case 'DELETE':
+                $result = \preg_match('/^\s*DELETE\s+FROM\s+([^\s,;()]+)/i', $sql, $matches);
+                break;
+            default:
+                $result = false;
+        }
+
+        if ($result === 1 && $matches !== []) {
+            return $this->cleanSqlTableName($matches[1]);
+        }
+
+        return null;
+    }
+
+    protected function cleanSqlTableName(string $tableName): string
+    {
+        $tableName = \trim($tableName, '"`\'');
+
+        if (\strpos($tableName, '.') !== false) {
+            $parts = \explode('.', $tableName);
+
+            return $parts[\array_key_last($parts)];
+        }
+
+        return $tableName;
     }
 }

@@ -33,7 +33,17 @@ abstract class TracingHttpClient extends AbstractTracingHttpClient implements Ht
             return $this->client->request($method, $url, $options);
         }
 
-        $span = $this->requestSpanStart($method, new Uri($url));
+        $span = $this->makeRequestSpan($method, new Uri($url));
+
+        $headers = $options['headers'] ?? [];
+
+        $this->spanTracer->startSpan($span, static function (string $key, string $value) use (&$headers): void {
+            if (!\array_key_exists($key, $headers)) {
+                $headers[$key] = $value;
+            }
+        });
+
+        $options['headers'] = $headers;
 
         return $this->tracingResponse($this->client->request($method, $url, $options), $span);
     }

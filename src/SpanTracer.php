@@ -13,9 +13,9 @@ interface SpanTracer
 
     public function hasActiveTrace(): bool;
 
-    public function startSpanWithTrace(Span $span, ?string $traceId = null, ?string $traceParentId = null): void;
+    public function startTraceSpan(Span $span, ?\Closure $propagationExtractor = null): void;
 
-    public function startSpan(Span $span, ?Trace $trace = null): void;
+    public function startSpan(Span $span, ?\Closure $propagationInjector = null, ?Trace $trace = null): void;
 
     public function endSpan(Span $span): void;
 }

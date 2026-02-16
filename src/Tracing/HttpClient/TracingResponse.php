@@ -156,9 +156,7 @@ abstract class TracingResponse implements ResponseInterface, StreamableInterface
         $statusCode = (int)($info['http_code'] ?? 0);
 
         if ($statusCode > 0) {
-            $this->span->context->http_response = [
-                'status_code' => $statusCode,
-            ];
+            $this->span->context->http_response = ['status_code' => $statusCode];
 
             $this->span->setSuccessfulIf($statusCode >= 100 && $statusCode < 400);
         }

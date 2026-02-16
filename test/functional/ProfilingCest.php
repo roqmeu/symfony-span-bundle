@@ -31,7 +31,7 @@ class ProfilingCest
             ['profilerLevel3', 0.08],
             ['profilerLevel2', 0.04],
             ['profilerLevel3', 0.16],
-            ['SpanProfiler', 0.34]
+            ['', 0.34]
         ];
 
         $idx = 0;
@@ -43,14 +43,16 @@ class ProfilingCest
                 continue;
             }
 
-            $I->assertIsArray($awaiting[$idx] ?? null, 'TODO');
+            $I->assertIsArray($awaiting[$idx] ?? null);
 
-            $I->assertStringContainsString($awaiting[$idx][0], $span->getName(), 'TODO');
+            $name = ($span->context->profile['stacktrace'] ?? [])[0] ?? '';
 
-            $I->assertEquals(SpanBundle::SPAN_TYPE_INTERNAL, $span->getType(), 'TODO');
+            $I->assertStringContainsString($awaiting[$idx][0], $name);
 
-            $I->assertGreaterThan($awaiting[$idx][1] - 0.02, $span->getEndTime() - $span->getStartTime(), 'TODO');
-            $I->assertLessThan($awaiting[$idx][1] + 0.02, $span->getEndTime() - $span->getStartTime(), 'TODO');
+            $I->assertEquals(SpanBundle::SPAN_TYPE_INTERNAL, $span->getType());
+
+            $I->assertGreaterThan($awaiting[$idx][1] - 0.02, $span->getEndTime() - $span->getStartTime());
+            $I->assertLessThan($awaiting[$idx][1] + 0.02, $span->getEndTime() - $span->getStartTime());
 
             $idx++;
         }

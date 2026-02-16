@@ -26,32 +26,33 @@ class BundleSpanTracer implements SpanTracer
         return $this->spanInteractor->getActiveTrace() !== null;
     }
 
-    public function startSpan(Span $span, ?Trace $trace = null): void
+    public function startTraceSpan(Span $span, ?\Closure $propagationExtractor = null): void
     {
-        if ($span->getTrace() === null) {
-            $span->setTrace($trace ?? $this->spanInteractor->getActiveTrace());
-        }
-
-        $trace = $span->getTrace();
-
-        $traceSpan = $trace !== null ? $trace->getSpan() : null;
-
-        if ($trace !== null && $traceSpan !== null && $traceSpan !== $span && $span->getParent() === null) {
-            $traceSpan->addChild($span);
-        }
-
-        $this->spanInteractor->startSpan($span);
-    }
-
-    public function startSpanWithTrace(Span $span, ?string $traceId = null, ?string $traceParentId = null): void
-    {
-        $trace = new Trace($span, $traceId);
-
-        $trace->setParent($traceParentId);
+        $trace = new Trace($span);
 
         $this->spanInteractor->startActiveTrace($trace);
 
-        $this->startSpan($span);
+        $this->startSpanInternal($span, $trace, null, $propagationExtractor);
+    }
+
+    public function startSpan(Span $span, ?\Closure $propagationInjector = null, ?Trace $trace = null): void
+    {
+        $this->startSpanInternal($span, ($trace ?? $span->getTrace()) ?? $this->spanInteractor->getActiveTrace(), $propagationInjector, null);
+    }
+
+    protected function startSpanInternal(Span $span, ?Trace $trace, ?\Closure $propagationInjector, ?\Closure $propagationExtractor): void
+    {
+        if ($trace !== null && $trace !== $span->getTrace()) {
+            $span->setTrace($trace);
+
+            $traceSpan = $trace->getSpan();
+
+            if ($traceSpan !== null && $traceSpan !== $span && $span->getParent() === null) {
+                $traceSpan->addChild($span);
+            }
+        }
+
+        $this->spanInteractor->startSpan($span, $propagationInjector, $propagationExtractor);
     }
 
     public function endSpan(Span $span): void

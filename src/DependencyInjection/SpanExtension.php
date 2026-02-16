@@ -13,10 +13,8 @@ use Roqmeu\SpanBundle\SpanInteractor;
 use Roqmeu\SpanBundle\SpanTracer;
 use Roqmeu\SpanBundle\Tracing\Command\TracingCommandListener;
 use Roqmeu\SpanBundle\Tracing\Controller\TracingRequestListener;
+use Roqmeu\SpanBundle\Transport\Event\SpanStartedEvent;
 use Roqmeu\SpanBundle\Transport\Event\TraceEndedEvent;
-use Roqmeu\SpanBundle\Transport\EventDispatcher\EventDispatcher;
-use Roqmeu\SpanBundle\Transport\EventDispatcher\NullEventDispatcher;
-use Roqmeu\SpanBundle\Transport\EventDispatcher\SymfonyEventDispatcher;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 
@@ -54,45 +52,42 @@ class SpanExtension extends Extension
         $config = $this->processConfiguration($this->getConfiguration($configs, $container), $configs);
 
         $buildConfig['enabled'] = ($config['enabled'] ?? null) === true;
-
         $buildConfig['tracing_enabled'] = ($config['tracing']['enabled'] ?? null) === true;
 
-        $isProfilingEnabled = $this->filterDynamicBooleanFlag($config['profiling']['enabled'] ?? null);
-        $buildConfig['profiling_enabled'] = $this->resolveDynamicBooleanFlag($isProfilingEnabled, 'profiling.enabled');
+        $dynamicFlag = $this->filterDynamicBooleanFlag($config['profiling']['enabled'] ?? null);
+        $container->setParameter('span.profiling_enabled', $dynamicFlag);
+        $buildConfig['profiling_enabled'] = $this->resolveDynamicBooleanFlag($dynamicFlag, 'profiling.enabled');
+
         $buildConfig['profiling_threshold'] = $config['profiling']['threshold'] ?? 0.0;
         $buildConfig['profiling_allowed_types'] = ($config['profiling']['allowed_types'] ?? null) ?: null;
         $buildConfig['profiling_ignored_types'] = ($config['profiling']['ignored_types'] ?? null) ?: null;
         $buildConfig['profiling_allowed_subtypes'] = ($config['profiling']['allowed_subtypes'] ?? null) ?: null;
         $buildConfig['profiling_ignored_subtypes'] = ($config['profiling']['ignored_subtypes'] ?? null) ?: null;
 
-        $container->setParameter(self::CONFIG_PARAMETER, $buildConfig);
-
-        $container->setParameter('span.profiling_enabled', $isProfilingEnabled);
-
         if ($buildConfig['enabled'] === true) {
-            $container->register(SpanInteractor::class, BundleSpanInteractor::class)
-                ->setAutowired(true)
-                ->setAutoconfigured(true);
+            if (!$container->hasDefinition(SpanInteractor::class)) {
+                $container->register(SpanInteractor::class, BundleSpanInteractor::class)
+                    ->setAutowired(true)
+                    ->setAutoconfigured(true);
+            }
 
-            $container->register(SpanTracer::class, BundleSpanTracer::class)
-                ->setAutowired(true)
-                ->setAutoconfigured(true);
-
-            $container->register(EventDispatcher::class, SymfonyEventDispatcher::class)
-                ->setAutowired(true)
-                ->setAutoconfigured(true);
+            if (!$container->hasDefinition(SpanTracer::class)) {
+                $container->register(SpanTracer::class, BundleSpanTracer::class)
+                    ->setAutowired(true)
+                    ->setAutoconfigured(true);
+            }
         } else {
-            $container->register(SpanInteractor::class, NullSpanInteractor::class)
-                ->setAutowired(true)
-                ->setAutoconfigured(true);
+            if (!$container->hasDefinition(SpanInteractor::class)) {
+                $container->register(SpanInteractor::class, NullSpanInteractor::class)
+                    ->setAutowired(true)
+                    ->setAutoconfigured(true);
+            }
 
-            $container->register(SpanTracer::class, NullSpanTracer::class)
-                ->setAutowired(true)
-                ->setAutoconfigured(true);
-
-            $container->register(EventDispatcher::class, NullEventDispatcher::class)
-                ->setAutowired(true)
-                ->setAutoconfigured(true);
+            if (!$container->hasDefinition(SpanTracer::class)) {
+                $container->register(SpanTracer::class, NullSpanTracer::class)
+                    ->setAutowired(true)
+                    ->setAutoconfigured(true);
+            }
         }
 
         if ($buildConfig['enabled'] === true && $buildConfig['tracing_enabled'] === true) {
@@ -105,12 +100,27 @@ class SpanExtension extends Extension
                 ->setAutoconfigured(true);
         }
 
-        if ($buildConfig['enabled'] === true && $buildConfig['tracing_enabled'] === true) {
-            $container->register(ElasticApmBridge::class, ElasticApmBridge::class)
-                ->setAutowired(true)
-                ->setAutoconfigured(true)
-                ->addTag('kernel.event_listener', ['event' => TraceEndedEvent::class, 'method' => 'onTraceEnded', 'priority' => -256]);
+        $dynamicFlag = $this->filterDynamicBooleanFlag($config['bridge']['elastic_apm']['enabled'] ?? null);
+        $container->setParameter('span.bridge_elastic_apm_enabled', $dynamicFlag);
+        $buildConfig['bridge_elastic_apm_enabled'] = $this->resolveDynamicBooleanFlag($dynamicFlag, 'elastic_apm.enabled');
+
+        $dynamicFlag = $this->filterDynamicBooleanFlag($config['bridge']['elastic_apm']['use_span_compression'] ?? null);
+        $container->setParameter('span.bridge_elastic_apm_use_span_compression', $dynamicFlag);
+        $buildConfig['bridge_elastic_apm_use_span_compression'] = $this->resolveDynamicBooleanFlag($dynamicFlag, 'elastic_apm.use_span_compression');
+
+        if ($buildConfig['enabled'] === true) {
+            if ($buildConfig['bridge_elastic_apm_enabled'] === true && !$container->hasDefinition(ElasticApmBridge::class)) {
+                $container->register(ElasticApmBridge::class, ElasticApmBridge::class)
+                    ->setAutowired(true)
+                    ->setAutoconfigured(true)
+                    ->setArgument(0, '%span.bridge_elastic_apm_enabled%')
+                    ->setArgument(1, '%span.bridge_elastic_apm_use_span_compression%')
+                    ->addTag('kernel.event_listener', ['event' => SpanStartedEvent::class, 'method' => 'onSpanStarted', 'priority' => -256])
+                    ->addTag('kernel.event_listener', ['event' => TraceEndedEvent::class, 'method' => 'onTraceEnded', 'priority' => -256]);
+            }
         }
+
+        $container->setParameter(self::CONFIG_PARAMETER, $buildConfig);
     }
 
     /**

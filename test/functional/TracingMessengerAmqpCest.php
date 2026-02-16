@@ -28,14 +28,10 @@ class TracingMessengerAmqpCest
         $span = $this->getEventSpanByType($endedSpans, SpanBundle::SPAN_TYPE_PRODUCER);
 
         $I->assertNotNull($span, 'TODO');
-        $I->assertEquals('PRODUCE to rabbitmq_exchange_name', $span->getName(), 'TODO');
         $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'TODO');
 
         $I->assertEquals('rabbitmq', $span->context->server['host'], 'TODO');
         $I->assertEquals(5672, $span->context->server['port'], 'TODO');
-
-        $I->assertEquals('rabbitmq', $span->context->target['type'], 'TODO');
-        $I->assertEquals('rabbitmq_exchange_name', $span->context->target['name'], 'TODO');
 
         $I->assertNotEmpty($span->context->message['name'], 'TODO');
         $I->assertEquals('rabbitmq_exchange_name', $span->context->message['queue_name'], 'TODO');
@@ -57,7 +53,6 @@ class TracingMessengerAmqpCest
             $span = $event->span;
 
             if ($span->getType() === SpanBundle::SPAN_TYPE_CONSUMER) {
-                $I->assertEquals('CONSUME from rabbitmq_queue_name', $span->getName(), 'TODO');
                 $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'TODO');
 
                 $I->assertEquals('rabbitmq', $span->context->server['host'], 'TODO');

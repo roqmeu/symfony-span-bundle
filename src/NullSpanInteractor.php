@@ -26,7 +26,7 @@ class NullSpanInteractor implements SpanInteractor
     {
     }
 
-    public function startSpan(Span $span): void
+    public function startSpan(Span $span, ?\Closure $propagationInjector = null, ?\Closure $propagationExtractor = null): void
     {
     }
 

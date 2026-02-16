@@ -7,7 +7,8 @@ Symfony-бандл, добавляющий трассировку и инстр�
 - Автоинструментирование Symfony HTTP Client, Guzzle, Doctrine DBAL, Symfony Messenger и OldSound RabbitMqBundle.
 - Централизованное управление трейсами и спанами, совместимое с OpenTelemetry naming-конвенциями.
 - Событийная модель работы: бандл диспатчит события жизненного цикла спанов/трейсов; адаптеры экспортируют данные во внешние системы.
-- Встроенный мост к Elastic APM, учитывающий спецификации агента и маппинг контекста.
+- Поддержка Distributed Tracing для передачи контекста трассировки через HTTP и очереди сообщений.
+- Встроенный мост к Elastic APM, учитывающий спецификации агента, маппинг контекста и поддерживающий Distributed Tracing.
 - Профайлинг приложения через `ext-excimer`.
 
 ## Требования
@@ -15,7 +16,7 @@ Symfony-бандл, добавляющий трассировку и инстр�
 - PHP `^7.4` или `^8.0`.
 - Symfony компоненты (Config, DependencyInjection, EventDispatcher) версий `^5.0 || ^6.0 || ^7.0`.
 - Поддержка Symfony Messenger `^5.4 || ^6.4 || ^7.0`.
-- Поддержка Doctrine DBAL `^3.0`.
+- Поддержка Doctrine DBAL `^3.0 || ^4.0`.
 - Поддержка Guzzle `^7.0`.
 - Поддержка OldSound RabbitMqBundle `^2.0`.
 - Для профилинга (опционально): PHP-расширение `excimer` (`ext-excimer`).
@@ -40,9 +41,10 @@ return [
 ## Быстрый старт
 
 1. Включите бандл и трассировку в конфиге (по умолчанию всё выключено).
-2. Подключите бандл и соберите контейнер.
-3. Подпишитесь на события `TraceStartedEvent`, `TraceEndedEvent`, `SpanStartedEvent`, `SpanEndedEvent`, если требуется собственный экспорт.
-4. Используйте `SpanTracer` для создания и завершения спанов в пользовательском коде или полагайтесь на готовые интеграции.
+2. Включите мост, например, `span.bridge.elastic_apm` (по умолчанию всё выключено).
+3. Подключите бандл и соберите контейнер.
+4. Подпишитесь на события `TraceStartedEvent`, `TraceEndedEvent`, `SpanStartedEvent`, `SpanEndedEvent`, если требуется собственный экспорт.
+5. Используйте `SpanTracer` для создания и завершения спанов в пользовательском коде или полагайтесь на готовые интеграции.
 
 ## Конфигурация
 
@@ -57,17 +59,24 @@ span:
   tracing:
     enabled: true
 
+  bridge:
+    elastic_apm:
+      # bool или placeholder (%env(bool:...)% или bool %parameter%)
+      enabled: '%env(bool:default::ELASTIC_APM_ENABLED)%'
+      # bool или placeholder (%env(bool:...)% или bool %parameter%)
+      use_span_compression: false
+
   profiling:
-    # bool или placeholder (%env(...)% / %parameter%)
-    enabled: '%env(bool:default::SPAN_PROFILER_ENABLED)%'
+    # bool или placeholder (%env(bool:...)% или bool %parameter%)
+    enabled: '%env(bool:default::PROFILER_ENABLED)%'
 
     # Порог (секунды). Минимум 0.01, по умолчанию 0.1.
     threshold: 0.1
 
     # Фильтры корневого спана, для которого включаем профилинг.
-    # Если задан allowed_* — соответствующий ignored_* игнорируется.
-    allowed_types: [server, consumer]
-    ignored_types: ~
+    # Если задан allowed_*, то соответствующий ignored_* игнорируется.
+    allowed_types: ~
+    ignored_types: [ console ]
     allowed_subtypes: ~
     ignored_subtypes: ~
 ```
@@ -78,32 +87,23 @@ span:
 - `span.enabled` и `span.tracing.enabled` влияют на сборку контейнера (регистрация сервисов и compiler passes), поэтому их следует задавать как обычные `true/false` (не placeholder).
 - `span.tracing.enabled`: включает листенеры HTTP/Console и автоинструментирование (Doctrine DBAL middleware, Symfony HttpClient, Guzzle, Symfony Messenger, OldSound RabbitMqBundle). Работает только если `span.enabled: true`.
 - `span.profiling.enabled`: включает профилинг через `ext-excimer` (если расширение отсутствует — используется `SpanNullProfiler`). Работает только если `span.enabled: true`.
+- `span.bridge.elastic_apm.enabled`: включает регистрацию `ElasticApmBridge` и его обработчики событий. Можно задавать как placeholder — в этом случае сервис будет зарегистрирован, а фактическое включение/выключение будет происходить по значению параметра/ENV в рантайме.
+- `span.bridge.elastic_apm.use_span_compression`: настройка для Distributed Tracing при использовании span compression в Elastic APM агенте. Можно задавать как placeholder.
 
 ## Архитектура и концепции
-
-### TracePool
-
-Трейсы хранятся в памяти стеком. Это позволяет корректно обрабатывать вложенные сценарии (например, CLI-команда запускает consumer):
-
-1. CLI-команда запускает Trace 1.
-2. Сообщение Messenger создаёт Trace 2, который завершается и диспатчится по завершении обработки.
-3. Стек возвращается к Trace 1, цикл повторяется для следующих сообщений.
-
-`TracePool` реализует `ResettableInterface`, поэтому не держит ссылки между запросами в worker-сценариях.
 
 ### Типизация и именование
 
 Бандл опирается на стандарты OpenTelemetry, Elastic Common Schema и Sentry.
 
-- Trace создаётся без имени.
-- Span получает пару `type` + `subtype` и низкокардинальное имя.
-- Рекомендации по именованию:
+- Span содержит пару `type` + `subtype` и `сontext`.
+- Ответственность за генерацию id, имени передана мостам (например, ElasticApmBridge), которые вычисляют их по собственным правилам на основе контекста:
   - HTTP server: `METHOD <route>`
   - HTTP client: `METHOD <host>`
   - DB: `<OPERATION> <table>`
   - Messaging: `<OPERATION> <destination>`
   - Console: `<command>`
-- Контекст высокой кардинальности хранится в `Roqmeu\SpanBundle\State\Context` и передаётся транспортами.
+- Контекст высокой кардинальности хранится в `Roqmeu\SpanBundle\State\Context`.
 
 ## Поддерживаемые интеграции
 
@@ -144,15 +144,17 @@ span:
 - `TraceStartedEvent` / `TraceEndedEvent`
 - `SpanStartedEvent` / `SpanEndedEvent`
 
-Стандартная реализация `Roqmeu\SpanBundle\Transport\EventDispatcher\SymfonyEventDispatcher` проксирует события в `Symfony\Contracts\EventDispatcher\EventDispatcherInterface`.
-
 ### Elastic APM Bridge
 
-`Roqmeu\SpanBundle\Bridge\ElasticApmBridge` подписан на `TraceEndedEvent` и экспортирует весь Trace в Elastic APM, соблюдая требования агента:
+`Roqmeu\SpanBundle\Bridge\ElasticApmBridge` подписан на `SpanStartedEvent` и `TraceEndedEvent` и экспортирует Trace в Elastic APM, соблюдая требования агента:
 
-- Корневой спан преобразуется в транзакцию с корректным `type`, `name`, `outcome` и `result`.
-- Дочерние спаны создаются через `beginChildSpan`, учитывая low-cardinality имя, тип и сабтайп.
-- Контекст HTTP/DB/Messaging маппится в `destination` и `service.target`.
+- Корневой спан преобразуется в транзакцию с корректным `type`, `outcome` и `result`. Имя транзакции генерируется мостом на основе контекста.
+- Дочерние спаны создаются через `beginChildSpan`, учитывая тип и сабтайп.
+- Контекст HTTP/DB/Messaging маппится в `destination` и `service.target`. Мост самостоятельно выбирает `target` на основе контекста.
+- Поддерживается Distributed Tracing за счёт "раннего" создания транзакций и спанов (stubs), так как Elastic APM Agent позволяет инжектировать заголовки `traceparent` только на этапе создания сегмента.
+
+Мост по умолчанию выключен. Для включения задайте `span.bridge.elastic_apm.enabled: true` (или placeholder) и убедитесь, что установлен и доступен `elastic/apm-agent-php` (проверяется по наличию класса `Elastic\Apm\ElasticApm`).
+Если вы хотите получать спаны из автоинструментирования Symfony/Doctrine/Messenger, дополнительно включайте `span.tracing.enabled: true`.
 
 Если нужна другая система экспорта, подпишитесь на события и реализуйте собственный транспорт.
 
@@ -178,8 +180,4 @@ span:
 
 ## План развития
 
-- Добавить тест Messenger RabbitMq Ok.
-- Добавить поддержку Doctrine DBAL `^4.0`.
-- Добавить прокидывание и получение `trace-id` в клиенты (Guzzle, Symfony HttpClient, Messenger и т.д.).
-- Поддержать использование `trace-id` в транспортах.
 - Добавить поддержку многоканальной отправки в `TracingProducerMiddleware`.

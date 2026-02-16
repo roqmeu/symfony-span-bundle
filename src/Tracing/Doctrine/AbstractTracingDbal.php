@@ -29,38 +29,16 @@ abstract class AbstractTracingDbal
         $this->databaseName = $databaseName;
     }
 
-    protected function buildSpanName(string $sql): string
-    {
-        $sql = \trim($sql);
-
-        if (\preg_match('/^\s*(\w+)/', $sql, $matches) === 1) {
-            $operation = \strtoupper($matches[1]);
-
-            $tableName = $this->extractTableName($sql, $operation);
-
-            if ($tableName !== null) {
-                return "{$operation} {$tableName}";
-            }
-        }
-
-        return "QUERY {$this->databaseName}";
-    }
-
     protected function fillSpanContext(Span $span, string $sql): void
     {
-        if (isset($this->connectionParams['host']) && $this->connectionParams['host'] !== '') {
-            $span->context->server = [
-                'host' => $this->connectionParams['host'],
-            ];
+        $host = ($this->connectionParams['host'] ?? '') ?: null;
 
-            if (isset($this->connectionParams['port']) && $this->connectionParams['port'] !== '') {
-                $span->context->server['port'] = (int) $this->connectionParams['port'];
-            }
-        }
+        $port = $this->connectionParams['port'] ?? 0;
+        $port = $port > 0 ? $port : null;
 
-        $span->context->target = [
-            'type' => $this->databaseType,
-            'name' => $this->databaseName,
+        $span->context->server = [
+            'host' => $host,
+            'port' => $port,
         ];
 
         $span->context->db = [
@@ -112,46 +90,5 @@ abstract class AbstractTracingDbal
         $databaseName = $connectionParams['dbname'] ?? $connectionParams['path'] ?? SpanBundle::UNKNOWN;
 
         return \is_string($databaseName) && $databaseName !== '' ? $databaseName : SpanBundle::UNKNOWN;
-    }
-
-    private function cleanTableName(string $tableName): string
-    {
-        $tableName = \trim($tableName, '"`\'');
-
-        if (\strpos($tableName, '.') !== false) {
-            $parts = \explode('.', $tableName);
-
-            return $parts[\array_key_last($parts)];
-        }
-
-        return $tableName;
-    }
-
-    private function extractTableName(string $sql, string $operation): ?string
-    {
-        $matches = [];
-
-        switch ($operation) {
-            case 'SELECT':
-                $result = \preg_match('/FROM\s+([^\s,;()]+)/i', $sql, $matches);
-                break;
-            case 'INSERT':
-                $result = \preg_match('/^\s*INSERT\s+INTO\s+([^\s,;()]+)/i', $sql, $matches);
-                break;
-            case 'UPDATE':
-                $result = \preg_match('/^\s*UPDATE\s+([^\s,;()]+)/i', $sql, $matches);
-                break;
-            case 'DELETE':
-                $result = \preg_match('/^\s*DELETE\s+FROM\s+([^\s,;()]+)/i', $sql, $matches);
-                break;
-            default:
-                $result = false;
-        }
-
-        if ($result === 1 && $matches !== []) {
-            return $this->cleanTableName($matches[1]);
-        }
-
-        return null;
     }
 }

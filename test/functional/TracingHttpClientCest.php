@@ -30,13 +30,9 @@ class TracingHttpClientCest
 
         $I->assertNotNull($span, 'Ожидали найти спан для Symfony HTTP запроса');
 
-        $I->assertEquals('GET span-bundle.lan:80', $span->getName(), 'TODO');
         $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Ожидали тип client');
         $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Ожидали подтип http');
         $I->assertNotNull($span->getEndTime(), 'TODO');
-
-        $I->assertEquals('http', $span->context->target['type'] ?? null, 'TODO');
-        $I->assertEquals('span-bundle.lan:80', $span->context->target['name'] ?? null, 'TODO');
 
         $I->assertEquals('GET', $span->context->http_request['method'] ?? null, 'TODO');
         $I->assertEquals('span-bundle.lan', $span->context->http_request['url']['domain'] ?? null, 'TODO');
@@ -60,10 +56,11 @@ class TracingHttpClientCest
 
         $I->assertNotNull($span, 'Ожидали найти спан для Symfony HTTP запроса');
 
-        $I->assertEquals('GET scoped.span-bundle.lan:80', $span->getName(), 'TODO');
         $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Ожидали тип client');
         $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Ожидали подтип http');
         $I->assertNotNull($span->getEndTime(), 'TODO');
+
+        $I->assertEquals('scoped.span-bundle.lan', $span->context->http_request['url']['domain'] ?? null, 'TODO');
     }
 
     public function testStreamOk(FunctionalTester $I): void
@@ -81,9 +78,10 @@ class TracingHttpClientCest
 
         $I->assertNotNull($span, 'Ожидали найти спан для Symfony HTTP запроса');
 
-        $I->assertEquals('GET span-bundle.lan:80', $span->getName(), 'TODO');
         $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Ожидали тип client');
         $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Ожидали подтип http');
         $I->assertNotNull($span->getEndTime(), 'TODO');
+
+        $I->assertEquals('span-bundle.lan', $span->context->http_request['url']['domain'] ?? null, 'TODO');
     }
 }

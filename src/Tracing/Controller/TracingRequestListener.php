@@ -43,18 +43,21 @@ class TracingRequestListener implements EventSubscriberInterface, ResetInterface
     public function onKernelController(ControllerEvent $event): void
     {
         $request = $event->getRequest();
+        $port = $request->getPort();
 
-        $route = $this->getRouteName($request);
+        if ($port === null) {
+            $port = $request->isSecure() ? 443 : 80;
+        }
 
-        $span = new Span("{$request->getMethod()} $route", SpanBundle::SPAN_TYPE_SERVER, SpanBundle::SPAN_SUBTYPE_HTTP);
+        $span = new Span(SpanBundle::SPAN_TYPE_SERVER, SpanBundle::SPAN_SUBTYPE_HTTP);
 
         $span->context->http_request = [
             'method' => $request->getMethod(),
-            'route' => $route,
+            'route' => $this->getRouteName($request),
             'url' => [
                 'domain' => $request->getHost(),
                 'path' => $request->getBaseUrl() . $request->getPathInfo(),
-                'port' => (int)$request->getPort(),
+                'port' => (int)$port,
                 'scheme' => $request->getScheme(),
             ],
         ];
@@ -62,17 +65,11 @@ class TracingRequestListener implements EventSubscriberInterface, ResetInterface
         if ($event->isMainRequest()) {
             $this->spanPool[$this->getRequestId($request)] = $span;
 
-            $traceId = null;
-            $traceParentId = null;
+            $headers = $request->headers;
 
-            $traceData = \explode('-', $request->headers['traceparent'] ?? '');
-
-            if ($traceData !== false) {
-                $traceId = $traceData[1] ?? null;
-                $traceParentId = $traceData[2] ?? null;
-            }
-
-            $this->spanTracer->startSpanWithTrace($span, $traceId, $traceParentId);
+            $this->spanTracer->startTraceSpan($span, static function (string $key) use ($headers): ?string {
+                return ((string)($headers->get($key, ''))) ?: null;
+            });
 
             return;
         }
@@ -114,17 +111,21 @@ class TracingRequestListener implements EventSubscriberInterface, ResetInterface
         $span->setError($event->getThrowable());
     }
 
-    private function getRequestId(Request $request): int
+    protected function getRequestId(Request $request): int
     {
         return \spl_object_id($request);
     }
 
-    private function getRouteName(Request $request): string
+    protected function getRouteName(Request $request): string
     {
         $route = $request->attributes->get('_route');
 
         if ($route instanceof Route) {
             return $route->getPath();
+        }
+
+        if (\is_string($route) && $route !== '') {
+            return $route;
         }
 
         $route = $request->attributes->get('_controller');

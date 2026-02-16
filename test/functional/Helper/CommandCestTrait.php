@@ -43,7 +43,6 @@ trait CommandCestTrait
 
         $I->assertNotNull($span, 'Ожидали найти спан типа "console"');
 
-        $I->assertEquals((explode(' ', $command))[0], $span->getName(), "Ожидали \"{$command}\" имя команды.");
         $I->assertEquals(SpanBundle::SPAN_TYPE_CONSOLE, $span->getType(), "// TODO");
         $I->assertEquals(true, $span->isEnded(), "// TODO");
 

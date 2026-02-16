@@ -23,24 +23,27 @@ class TracingProducer extends Producer
     {
         if (!$this->spanTracer->hasActiveTrace()) {
             parent::publish($msgBody, $routingKey, $additionalProperties, $headers);
+
+            return;
         }
 
         $exchangeName = $this->resolveExchangeName();
 
-        $span = new Span("PRODUCE to {$exchangeName}", SpanBundle::SPAN_TYPE_PRODUCER, SpanBundle::SPAN_SUBTYPE_RABBITMQ);
+        $span = new Span(SpanBundle::SPAN_TYPE_PRODUCER, SpanBundle::SPAN_SUBTYPE_RABBITMQ);
 
-        $span->context->target = [
-            'type' => SpanBundle::SPAN_SUBTYPE_RABBITMQ,
-            'name' => $exchangeName,
-        ];
         $span->context->message = [
-            'name' => SpanBundle::UNKNOWN,
             'queue_name' => $exchangeName,
         ];
 
         $this->fillServerContext($span);
 
-        $this->spanTracer->startSpan($span);
+        $headers ??= [];
+
+        $this->spanTracer->startSpan($span, static function (string $key, string $value) use (&$headers): void {
+            if (!\array_key_exists($key, $headers)) {
+                $headers[$key] = $value;
+            }
+        });
 
         try {
             parent::publish($msgBody, $routingKey, $additionalProperties, $headers);

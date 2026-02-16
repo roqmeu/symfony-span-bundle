@@ -25,11 +25,11 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
 {
     use SpanTracerAwareTrait;
 
-    private HandlersLocatorInterface $handlersLocator;
+    protected HandlersLocatorInterface $handlersLocator;
 
-    private ?AmqpTransportMetadataRegistry $amqpMetadataRegistry;
+    protected ?AmqpTransportMetadataRegistry $amqpMetadataRegistry;
 
-    private ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry;
+    protected ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry;
 
     public function __construct(
         SpanTracer $spanTracer,
@@ -51,21 +51,20 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
     {
         $message = $envelope->getMessage();
 
-        $span = new Span(SpanBundle::UNKNOWN, SpanBundle::SPAN_TYPE_CONSUMER, SpanBundle::SPAN_SUBTYPE_MESSENGER);
+        $span = new Span(SpanBundle::SPAN_TYPE_CONSUMER, SpanBundle::SPAN_SUBTYPE_MESSENGER);
 
         $handlerName = null;
 
-        $traceId = null;
-        $traceParentId = null;
+        $propagationStamp = $envelope->last(PropagationStamp::class);
+        $propagationExtractor = null;
 
-        $traceStamp = $envelope->last(TracingStamp::class);
-
-        if ($traceStamp !== null) {
-            $traceId = $traceStamp->traceId;
-            $traceParentId = $traceStamp->parentId;
+        if ($propagationStamp !== null) {
+            $propagationExtractor = static function (string $key) use ($propagationStamp): ?string {
+                return ((string)($propagationStamp->data[$key] ?? '')) ?: null;
+            };
         }
 
-        $this->spanTracer->startSpanWithTrace($span, $traceId, $traceParentId);
+        $this->spanTracer->startTraceSpan($span, $propagationExtractor);
 
         try {
             $envelope = $stack->next()->handle($envelope, $stack);
@@ -114,7 +113,7 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
             } elseif ($transportType === SpanBundle::SPAN_SUBTYPE_DOCTRINE) {
                 $this->fillDoctrineSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
             } else {
-                $this->fillDefaultSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
+                $this->fillSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
             }
 
             $this->spanTracer->endSpan($span);
@@ -181,7 +180,7 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
             $transportName = $stamp->getQueueName();
         }
 
-        $this->fillDefaultSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
+        $this->fillSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
     }
 
     private function fillDoctrineSpan(
@@ -204,31 +203,21 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
                     $transportName = $metadata->databaseName;
                 }
 
-                $queueName = null;
-
-                if ($metadata->tableName !== null && $metadata->queueName !== null) {
-                    $queueName = "{$metadata->tableName}/{$metadata->queueName}";
-                }
-
                 $span->context->server = [
                     'host' => $metadata->host,
                     'port' => $metadata->port,
                 ];
 
-                $this->fillDefaultSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
-
-                if ($queueName !== null) {
-                    $span->setName("CONSUME from {$queueName}");
-                }
+                $this->fillSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
 
                 return;
             }
         }
 
-        $this->fillDefaultSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
+        $this->fillSpan($span, $envelope, $handlerName, $messageName, $transportType, $transportName);
     }
 
-    private function fillDefaultSpan(
+    private function fillSpan(
         Span $span,
         Envelope $envelope,
         ?string $handlerName,
@@ -236,13 +225,7 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
         string $transportType,
         string $transportName
     ): void {
-        $span->setName("CONSUME from {$transportName}");
         $span->setSubtype($transportType);
-
-        $span->context->target = [
-            'type' => $transportType,
-            'name' => $transportName,
-        ];
 
         $span->context->message = [
             'consumer_name' => $handlerName,

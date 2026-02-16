@@ -8,10 +8,6 @@ use Roqmeu\SpanBundle\SpanBundle;
 
 class Span
 {
-    protected string $id;
-
-    protected string $name;
-
     /**
      * @var string
      *
@@ -51,30 +47,12 @@ class Span
 
     public Context $context;
 
-    public function __construct(string $name, string $type, string $subtype = null)
+    public function __construct(string $type, string $subtype = null)
     {
-        $this->id = \bin2hex(\random_bytes(8));
-
-        $this->name = $name;
         $this->type = $type;
         $this->subtype = $subtype;
 
         $this->context = new Context();
-    }
-
-    public function getId(): string
-    {
-        return $this->id;
-    }
-
-    public function getName(): string
-    {
-        return $this->name;
-    }
-
-    public function setName(string $name): void
-    {
-        $this->name = $name;
     }
 
     public function getType(): string
@@ -130,6 +108,11 @@ class Span
     public function setTrace(?Trace $trace): void
     {
         $this->trace = $trace;
+    }
+
+    public function getTraceSpan(): ?Span
+    {
+        return $this->trace !== null ? $this->trace->getSpan() : null;
     }
 
     public function getParent(): ?Span

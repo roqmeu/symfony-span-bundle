@@ -20,9 +20,9 @@ class TracingProducerMiddleware implements MiddlewareInterface
 {
     use SpanTracerAwareTrait;
 
-    private ?AmqpTransportMetadataRegistry $amqpMetadataRegistry;
+    protected ?AmqpTransportMetadataRegistry $amqpMetadataRegistry;
 
-    private ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry;
+    protected ?DoctrineTransportMetadataRegistry $doctrineMetadataRegistry;
 
     public function __construct(
         SpanTracer $spanTracer,
@@ -50,9 +50,17 @@ class TracingProducerMiddleware implements MiddlewareInterface
             return $stack->next()->handle($envelope, $stack);
         }
 
-        $span = new Span(SpanBundle::UNKNOWN, SpanBundle::SPAN_TYPE_PRODUCER, SpanBundle::SPAN_SUBTYPE_MESSENGER);
+        $span = new Span(SpanBundle::SPAN_TYPE_PRODUCER, SpanBundle::SPAN_SUBTYPE_MESSENGER);
 
-        $this->spanTracer->startSpan($span);
+        $propagationStamp = new PropagationStamp();
+
+        $this->spanTracer->startSpan($span, static function (string $key, string $value) use ($propagationStamp): void {
+            if (!\array_key_exists($key, $propagationStamp->data)) {
+                $propagationStamp->data[$key] = $value;
+            }
+        });
+
+        $envelope = $envelope->with($propagationStamp);
 
         try {
             $envelope = $stack->next()->handle($envelope, $stack);
@@ -71,7 +79,7 @@ class TracingProducerMiddleware implements MiddlewareInterface
             } elseif ($transportType === SpanBundle::SPAN_SUBTYPE_DOCTRINE) {
                 $this->fillDoctrineSpan($span, $messageName, $transportType, $transportName);
             } else {
-                $this->fillDefaultSpan($span, $messageName, $transportType, $transportName, $transportName);
+                $this->fillSpan($span, $messageName, $transportType, $transportName);
             }
 
             $this->spanTracer->endSpan($span);
@@ -133,7 +141,7 @@ class TracingProducerMiddleware implements MiddlewareInterface
             }
         }
 
-        $this->fillDefaultSpan($span, $messageName, $transportType, $transportName, $transportName);
+        $this->fillSpan($span, $messageName, $transportType, $transportName);
     }
 
     private function fillDoctrineSpan(Span $span, string $messageName, string $transportType, string $transportName): void
@@ -150,40 +158,27 @@ class TracingProducerMiddleware implements MiddlewareInterface
                     $transportName = $metadata->databaseName;
                 }
 
-                $queueName = $transportName;
-
-                if ($metadata->tableName !== null && $metadata->queueName !== null) {
-                    $queueName = "{$metadata->tableName}/{$metadata->queueName}";
-                }
-
                 $span->context->server = [
                     'host' => $metadata->host,
                     'port' => $metadata->port,
                 ];
 
-                $this->fillDefaultSpan($span, $messageName, $transportType, $transportName, $queueName);
+                $this->fillSpan($span, $messageName, $transportType, $transportName);
 
                 return;
             }
         }
 
-        $this->fillDefaultSpan($span, $messageName, $transportType, $transportName, $transportName);
+        $this->fillSpan($span, $messageName, $transportType, $transportName);
     }
 
-    private function fillDefaultSpan(Span $span, string $messageName, string $transportType, string $transportName, string $queueName): void
+    private function fillSpan(Span $span, string $messageName, string $transportType, string $transportName): void
     {
-        $span->setName("PRODUCE to {$queueName}");
-
         $span->setSubtype($transportType);
-
-        $span->context->target = [
-            'type' => $transportType,
-            'name' => $transportName,
-        ];
 
         $span->context->message = [
             'name' => $messageName,
-            'queue_name' => $queueName,
+            'queue_name' => $transportName,
         ];
     }
 }
