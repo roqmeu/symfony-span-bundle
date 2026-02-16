@@ -8,15 +8,15 @@ class Trace
 {
     protected string $id;
 
-    protected ?Span $rootSpan;
+    protected ?string $parentId = null;
 
-    protected ?Trace $parent = null;
+    protected ?Span $span;
 
-    public function __construct(?Span $rootSpan = null)
+    public function __construct(?Span $span = null, ?string $id = null)
     {
-        $this->setRootSpan($rootSpan);
+        $this->setSpan($span);
 
-        $this->id = \bin2hex(\random_bytes(16));
+        $this->id = $id ?? \bin2hex(\random_bytes(16));
     }
 
     public function getId(): string
@@ -24,27 +24,27 @@ class Trace
         return $this->id;
     }
 
-    public function getParent(): ?Trace
+    public function getParent(): ?string
     {
-        return $this->parent;
+        return $this->parentId;
     }
 
-    public function setParent(?Trace $parent): void
+    public function setParent(?string $parentId): void
     {
-        $this->parent = $parent;
+        $this->parentId = $parentId;
     }
 
-    public function setRootSpan(?Span $rootSpan): void
+    public function setSpan(?Span $span): void
     {
-        $this->rootSpan = $rootSpan;
+        $this->span = $span;
 
-        if ($rootSpan !== null) {
-            $rootSpan->setTrace($this);
+        if ($span !== null) {
+            $span->setTrace($this);
         }
     }
 
-    public function getRootSpan(): ?Span
+    public function getSpan(): ?Span
     {
-        return $this->rootSpan;
+        return $this->span;
     }
 }

@@ -24,6 +24,7 @@ class TracingBatchConsumer extends BatchConsumer
 
             $span = new Span(SpanBundle::UNKNOWN, SpanBundle::SPAN_TYPE_CONSUMER, SpanBundle::SPAN_SUBTYPE_RABBITMQ);
             $span->setName("CONSUME batch from {$queueName}");
+
             $span->context->target = [
                 'type' => SpanBundle::SPAN_SUBTYPE_RABBITMQ,
                 'name' => $queueName,
@@ -33,6 +34,7 @@ class TracingBatchConsumer extends BatchConsumer
                 'name' => SpanBundle::UNKNOWN,
                 'queue_name' => $queueName,
             ];
+
             $this->fillServerContext($span);
 
             $this->spanTracer->startSpanWithTrace($span);

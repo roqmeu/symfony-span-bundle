@@ -55,7 +55,17 @@ abstract class TracingConsumerMiddleware implements MiddlewareInterface
 
         $handlerName = null;
 
-        $this->spanTracer->startSpanWithTrace($span);
+        $traceId = null;
+        $traceParentId = null;
+
+        $traceStamp = $envelope->last(TracingStamp::class);
+
+        if ($traceStamp !== null) {
+            $traceId = $traceStamp->traceId;
+            $traceParentId = $traceStamp->parentId;
+        }
+
+        $this->spanTracer->startSpanWithTrace($span, $traceId, $traceParentId);
 
         try {
             $envelope = $stack->next()->handle($envelope, $stack);

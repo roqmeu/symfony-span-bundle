@@ -12,6 +12,7 @@ use Elastic\Apm\SpanInterface as ElasticSpanInterface;
 use Elastic\Apm\TransactionInterface as ElasticTransactionInterface;
 use Roqmeu\SpanBundle\SpanBundle;
 use Roqmeu\SpanBundle\State\Span;
+use Roqmeu\SpanBundle\State\Trace;
 use Roqmeu\SpanBundle\Transport\Event\TraceEndedEvent;
 
 /**
@@ -45,7 +46,7 @@ class ElasticApmBridge
 
         $trace = $event->trace;
 
-        $span = $trace->getRootSpan();
+        $span = $trace->getSpan();
 
         if ($span === null || $span->getStartTime() === null) {
             return;
@@ -58,7 +59,7 @@ class ElasticApmBridge
             return;
         }
 
-        $segment = $this->mapSpanToElasticTransaction($span, $defaultStartTime);
+        $segment = $this->createElasticTransaction($trace, $span, $defaultStartTime);
 
         if ($segment->isNoop() || !$segment->isSampled()) {
             $this->endElasticSegment($span, $segment, $defaultStartTime, $defaultEndTime);
@@ -79,7 +80,7 @@ class ElasticApmBridge
 
             if ($spanStackEnd !== $childSpan) {
                 $spanStack[] = $childSpan;
-                $segmentStack[] = $this->mapSpanToElasticSpan($childSpan, $segmentStackEnd, $defaultStartTime);
+                $segmentStack[] = $this->createElasticSpan($childSpan, $segmentStackEnd, $defaultStartTime);
             } else {
                 \array_pop($spanStack);
                 \array_pop($segmentStack);
@@ -100,7 +101,7 @@ class ElasticApmBridge
      * - console     -> cli, name = command name
      * - прочее      -> custom
      */
-    private function mapSpanToElasticTransaction(Span $span, float $defaultStartTime): ElasticTransactionInterface
+    private function createElasticTransaction(Trace $trace, Span $span, float $defaultStartTime): ElasticTransactionInterface
     {
         $name = $span->getName();
         $type = 'custom';
@@ -151,7 +152,24 @@ class ElasticApmBridge
             $name = 'unnamed';
         }
 
-        $elasticTransaction = ElasticApm::beginTransaction($name, $type, $this->secondsToMicros($span->getStartTime() ?? $defaultStartTime));
+        $elasticTransactionBuilder = ElasticApm::newTransaction($name, $type)->timestamp($this->secondsToMicros($span->getStartTime() ?? $defaultStartTime));
+
+        $traceId = $trace->getId();
+        $traceParentId = $trace->getParent();
+
+        if ($traceParentId !== null) {
+            $elasticTransactionBuilder->distributedTracingHeaderExtractor(
+                static function (string $headerName) use ($traceId, $traceParentId): ?string {
+                    if ($headerName === 'traceparent') {
+                        return "00-{$traceId}-{$traceParentId}-01";
+                    }
+
+                    return null;
+                }
+            );
+        }
+
+        $elasticTransaction = $elasticTransactionBuilder->begin();
 
         if ($elasticTransaction->isNoop() || !$elasticTransaction->isSampled()) {
             return $elasticTransaction;
@@ -290,7 +308,7 @@ class ElasticApmBridge
         }
     }
 
-    private function mapSpanToElasticSpan(Span $span, ElasticExecutionSegmentInterface $elasticParent, float $defaultStartTime): ElasticSpanInterface
+    private function createElasticSpan(Span $span, ElasticExecutionSegmentInterface $elasticParent, float $defaultStartTime): ElasticSpanInterface
     {
         $name = $span->getName();
 

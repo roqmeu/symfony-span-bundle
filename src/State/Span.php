@@ -53,7 +53,7 @@ class Span
 
     public function __construct(string $name, string $type, string $subtype = null)
     {
-        $this->id = \bin2hex(\random_bytes(16));
+        $this->id = \bin2hex(\random_bytes(8));
 
         $this->name = $name;
         $this->type = $type;

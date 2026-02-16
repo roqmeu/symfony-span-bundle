@@ -34,18 +34,20 @@ class BundleSpanTracer implements SpanTracer
 
         $trace = $span->getTrace();
 
-        $rootSpan = $trace !== null ? $trace->getRootSpan() : null;
+        $traceSpan = $trace !== null ? $trace->getSpan() : null;
 
-        if ($trace !== null && $rootSpan !== null && $rootSpan !== $span && $span->getParent() === null) {
-            $rootSpan->addChild($span);
+        if ($trace !== null && $traceSpan !== null && $traceSpan !== $span && $span->getParent() === null) {
+            $traceSpan->addChild($span);
         }
 
         $this->spanInteractor->startSpan($span);
     }
 
-    public function startSpanWithTrace(Span $span): void
+    public function startSpanWithTrace(Span $span, ?string $traceId = null, ?string $traceParentId = null): void
     {
-        $trace = new Trace($span);
+        $trace = new Trace($span, $traceId);
+
+        $trace->setParent($traceParentId);
 
         $this->spanInteractor->startActiveTrace($trace);
 
@@ -58,7 +60,7 @@ class BundleSpanTracer implements SpanTracer
 
         $trace = $span->getTrace();
 
-        if ($trace !== null && $span === $trace->getRootSpan()) {
+        if ($trace !== null && $span === $trace->getSpan()) {
             $this->spanInteractor->endTrace($trace);
         }
     }

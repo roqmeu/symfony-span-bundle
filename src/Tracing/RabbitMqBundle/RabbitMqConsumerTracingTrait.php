@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Roqmeu\SpanBundle\Tracing\RabbitMqBundle;
 
 use PhpAmqpLib\Message\AMQPMessage;
+use PhpAmqpLib\Wire\AMQPTable;
 use Roqmeu\SpanBundle\SpanBundle;
 use Roqmeu\SpanBundle\State\Span;
 
@@ -36,7 +37,22 @@ trait RabbitMqConsumerTracingTrait
 
         $this->fillServerContext($span);
 
-        $this->spanTracer->startSpanWithTrace($span);
+        /** @var AMQPTable $headers */
+        $headers = $msg->get('application_headers');
+
+        $traceId = null;
+        $traceParentId = null;
+
+        if ($headers instanceof AMQPTable) {
+            $traceData = \explode('-', $headers['traceparent'] ?? '');
+
+            if ($traceData !== false) {
+                $traceId = $traceData[1] ?? null;
+                $traceParentId = $traceData[2] ?? null;
+            }
+        }
+
+        $this->spanTracer->startSpanWithTrace($span, $traceId, $traceParentId);
 
         try {
             parent::processMessageQueueCallback($msg, $queueName, $callback);

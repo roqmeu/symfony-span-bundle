@@ -62,8 +62,22 @@ class TracingRequestListener implements EventSubscriberInterface, ResetInterface
         if ($event->isMainRequest()) {
             $this->spanPool[$this->getRequestId($request)] = $span;
 
-            $this->spanTracer->startSpanWithTrace($span);
-        } elseif ($this->spanTracer->hasActiveTrace()) {
+            $traceId = null;
+            $traceParentId = null;
+
+            $traceData = \explode('-', $request->headers['traceparent'] ?? '');
+
+            if ($traceData !== false) {
+                $traceId = $traceData[1] ?? null;
+                $traceParentId = $traceData[2] ?? null;
+            }
+
+            $this->spanTracer->startSpanWithTrace($span, $traceId, $traceParentId);
+
+            return;
+        }
+
+        if ($this->spanTracer->hasActiveTrace()) {
             $this->spanPool[$this->getRequestId($request)] = $span;
 
             $this->spanTracer->startSpan($span);

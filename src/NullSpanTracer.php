@@ -21,11 +21,11 @@ class NullSpanTracer implements SpanTracer
         return false;
     }
 
-    public function startSpan(Span $span, ?Trace $trace = null): void
+    public function startSpanWithTrace(Span $span, ?string $traceId = null, ?string $traceParentId = null): void
     {
     }
 
-    public function startSpanWithTrace(Span $span): void
+    public function startSpan(Span $span, ?Trace $trace = null): void
     {
     }
 

@@ -42,7 +42,7 @@ class SpanProfilerHandler
     public function onTraceStarted(TraceStartedEvent $event): void
     {
         if ($this->enabled && $this->profiler !== null) {
-            $span = $event->trace->getRootSpan();
+            $span = $event->trace->getSpan();
 
             if ($span !== null && $this->isAllowedSpan($span)) {
                 $this->profiler->start($span->getId());
@@ -53,7 +53,7 @@ class SpanProfilerHandler
     public function onTraceEnded(TraceEndedEvent $event): void
     {
         if ($this->enabled && $this->profiler !== null) {
-            $span = $event->trace->getRootSpan();
+            $span = $event->trace->getSpan();
 
             if ($span !== null && $this->profiler->has($span->getId())) {
                 $this->profiler->stop($span->getId());
