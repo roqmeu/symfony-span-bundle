@@ -28,17 +28,17 @@ class TracingHttpClientCest
 
         $span = $this->getEventSpanByType($endedSpans, SpanBundle::SPAN_TYPE_CLIENT);
 
-        $I->assertNotNull($span, 'Ожидали найти спан для Symfony HTTP запроса');
+        $I->assertNotNull($span, 'Проверка наличия спана Symfony HTTP-запроса');
 
-        $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Ожидали тип client');
-        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Ожидали подтип http');
-        $I->assertNotNull($span->getEndTime(), 'TODO');
+        $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Проверка типа спана Symfony HTTP-запроса');
+        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Проверка подтипа спана Symfony HTTP-запроса');
+        $I->assertNotNull($span->getEndTime(), 'Проверка времени завершения спана Symfony HTTP-запроса');
 
-        $I->assertEquals('GET', $span->context->http_request['method'] ?? null, 'TODO');
-        $I->assertEquals('span-bundle.lan', $span->context->http_request['url']['domain'] ?? null, 'TODO');
-        $I->assertEquals('/ok', $span->context->http_request['url']['path'] ?? null, 'TODO');
-        $I->assertEquals(80, $span->context->http_request['url']['port'] ?? null, 'TODO');
-        $I->assertEquals('http', $span->context->http_request['url']['scheme'] ?? null, 'TODO');
+        $I->assertEquals('GET', $span->context->http_request['method'] ?? null, 'Проверка HTTP-метода Symfony HTTP-запроса');
+        $I->assertEquals('span-bundle.lan', $span->context->http_request['url']['domain'] ?? null, 'Проверка домена Symfony HTTP-запроса');
+        $I->assertEquals('/ok', $span->context->http_request['url']['path'] ?? null, 'Проверка пути Symfony HTTP-запроса');
+        $I->assertEquals(80, $span->context->http_request['url']['port'] ?? null, 'Проверка порта Symfony HTTP-запроса');
+        $I->assertEquals('http', $span->context->http_request['url']['scheme'] ?? null, 'Проверка схемы Symfony HTTP-запроса');
     }
 
     public function testScopedOk(FunctionalTester $I): void
@@ -54,13 +54,13 @@ class TracingHttpClientCest
 
         $span = $this->getEventSpanByType($endedSpans, SpanBundle::SPAN_TYPE_CLIENT);
 
-        $I->assertNotNull($span, 'Ожидали найти спан для Symfony HTTP запроса');
+        $I->assertNotNull($span, 'Проверка наличия спана Symfony HTTP-запроса');
 
-        $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Ожидали тип client');
-        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Ожидали подтип http');
-        $I->assertNotNull($span->getEndTime(), 'TODO');
+        $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Проверка типа спана Symfony HTTP-запроса');
+        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Проверка подтипа спана Symfony HTTP-запроса');
+        $I->assertNotNull($span->getEndTime(), 'Проверка времени завершения спана Symfony HTTP-запроса');
 
-        $I->assertEquals('scoped.span-bundle.lan', $span->context->http_request['url']['domain'] ?? null, 'TODO');
+        $I->assertEquals('scoped.span-bundle.lan', $span->context->http_request['url']['domain'] ?? null, 'Проверка домена scoped Symfony HTTP-запроса');
     }
 
     public function testStreamOk(FunctionalTester $I): void
@@ -76,12 +76,12 @@ class TracingHttpClientCest
 
         $span = $this->getEventSpanByType($endedSpans, SpanBundle::SPAN_TYPE_CLIENT);
 
-        $I->assertNotNull($span, 'Ожидали найти спан для Symfony HTTP запроса');
+        $I->assertNotNull($span, 'Проверка наличия спана Symfony HTTP-запроса');
 
-        $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Ожидали тип client');
-        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Ожидали подтип http');
-        $I->assertNotNull($span->getEndTime(), 'TODO');
+        $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Проверка типа спана Symfony HTTP-запроса');
+        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Проверка подтипа спана Symfony HTTP-запроса');
+        $I->assertNotNull($span->getEndTime(), 'Проверка времени завершения спана Symfony HTTP-запроса');
 
-        $I->assertEquals('span-bundle.lan', $span->context->http_request['url']['domain'] ?? null, 'TODO');
+        $I->assertEquals('span-bundle.lan', $span->context->http_request['url']['domain'] ?? null, 'Проверка домена Symfony HTTP-запроса при стриминге');
     }
 }

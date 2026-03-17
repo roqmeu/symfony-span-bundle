@@ -23,7 +23,7 @@ trait CommandCestTrait
         if ($commandClass !== '') {
             $commandService = $I->grabService($commandClass);
 
-            $I->assertNotNull($commandService, 'TODO');
+            $I->assertNotNull($commandService, "Проверка наличия сервиса команды \"{$commandClass}\".");
         }
 
         $exitCode = $application->run(
@@ -36,22 +36,21 @@ trait CommandCestTrait
         $I->assertEquals(
             $expectedCode,
             $exitCode,
-            "Ожидали \"{$expectedCode}\" код выхода для команды \"{$command}\"."
+            "Проверка кода выхода команды \"{$command}\"."
         );
 
         $span = $this->getEventSpanByType($endedSpans, SpanBundle::SPAN_TYPE_CONSOLE);
 
-        $I->assertNotNull($span, 'Ожидали найти спан типа "console"');
+        $I->assertNotNull($span, "Проверка наличия спана типа \"console\" команды \"{$command}\".");
 
-        $I->assertEquals(SpanBundle::SPAN_TYPE_CONSOLE, $span->getType(), "// TODO");
-        $I->assertEquals(true, $span->isEnded(), "// TODO");
+        $I->assertEquals(true, $span->isEnded(), "Проверка завершения спана команды \"{$command}\".");
 
         if ($successful) {
-            $I->assertEquals(true, $span->isSuccessful(), "// TODO");
-            $I->assertEquals(null, $span->getError(), "// TODO");
+            $I->assertEquals(true, $span->isSuccessful(), "Проверка успешного завершения спана команды \"{$command}\".");
+            $I->assertEquals(null, $span->getError(), "Проверка отсутствия ошибки у спана команды \"{$command}\".");
         } else {
-            $I->assertEquals(false, $span->isSuccessful(), "// TODO");
-            $I->assertNotNull($span->getError(), "// TODO");
+            $I->assertEquals(false, $span->isSuccessful(), "Проверка неуспешного завершения спана команды \"{$command}\".");
+            $I->assertNotNull($span->getError(), "Проверка наличия ошибки у спана команды \"{$command}\".");
         }
 
         $this->assertEventsMinCounts($I, $events, 1, 1);

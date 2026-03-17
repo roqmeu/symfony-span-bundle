@@ -54,12 +54,12 @@ trait EventDispatcherCestTrait
         $I->assertEquals(
             $spanCount,
             $startedSpansCount,
-            "Ожидали \"{$spanCount}\" событий SpanStartedEvent"
+            'Проверка количества событий SpanStartedEvent'
         );
         $I->assertEquals(
             $spanCount,
             $endedSpansCount,
-            "Ожидали \"{$spanCount}\" событий SpanEndedEvent"
+            'Проверка количества событий SpanEndedEvent'
         );
 
         $startedTracesCount = \count($startedTraces);
@@ -67,12 +67,12 @@ trait EventDispatcherCestTrait
         $I->assertEquals(
             $traceCount,
             $startedTracesCount,
-            "Ожидали \"{$traceCount}\" событий TraceStartedEvent"
+            'Проверка количества событий TraceStartedEvent'
         );
         $I->assertEquals(
             $traceCount,
             $endedTracesCount,
-            "Ожидали \"{$traceCount}\" событий TraceEndedEvent"
+            'Проверка количества событий TraceEndedEvent'
         );
     }
 
@@ -88,12 +88,12 @@ trait EventDispatcherCestTrait
         $I->assertGreaterThanOrEqual(
             $spanCount,
             $startedSpansCount,
-            "Ожидали минимум \"{$spanCount}\" событий SpanStartedEvent"
+            'Проверка минимального количества событий SpanStartedEvent'
         );
         $I->assertGreaterThanOrEqual(
             $spanCount,
             $endedSpansCount,
-            "Ожидали минимум \"{$spanCount}\" событий SpanEndedEvent"
+            'Проверка минимального количества событий SpanEndedEvent'
         );
 
         $startedTracesCount = \count($startedTraces);
@@ -101,12 +101,12 @@ trait EventDispatcherCestTrait
         $I->assertGreaterThanOrEqual(
             $traceCount,
             $startedTracesCount,
-            "Ожидали минимум \"{$traceCount}\" событий TraceStartedEvent"
+            'Проверка минимального количества событий TraceStartedEvent'
         );
         $I->assertGreaterThanOrEqual(
             $traceCount,
             $endedTracesCount,
-            "Ожидали минимум \"{$traceCount}\" событий TraceEndedEvent"
+            'Проверка минимального количества событий TraceEndedEvent'
         );
     }
 

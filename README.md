@@ -36,7 +36,7 @@ return [
 ];
 ```
 
-После установки бандл предоставляет сервисы `SpanTracer`, `SpanInteractor` и `EventDispatcher`, которые можно внедрять через автоконфигурацию.
+После установки бандл предоставляет сервисы `SpanTracer`, `SpanInteractor`, которые можно внедрять через автоконфигурацию.
 
 ## Быстрый старт
 
@@ -97,9 +97,9 @@ span:
 Бандл опирается на стандарты OpenTelemetry, Elastic Common Schema и Sentry.
 
 - Span содержит пару `type` + `subtype` и `сontext`.
-- Ответственность за генерацию id, имени передана мостам (например, ElasticApmBridge), которые вычисляют их по собственным правилам на основе контекста:
-  - HTTP server: `METHOD <route>`
-  - HTTP client: `METHOD <host>`
+- Ответственность за генерацию id, имени передана мостам (например, ElasticApmBridge), которые вычисляют их по собственным правилам на основе контекста, пример ElasticApmBridge:
+  - HTTP server: `<METHOD> <route>`
+  - HTTP client: `<METHOD> <host>`
   - DB: `<OPERATION> <table>`
   - Messaging: `<OPERATION> <destination>`
   - Console: `<command>`

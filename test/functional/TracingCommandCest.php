@@ -26,25 +26,37 @@ class TracingCommandCest
 
         $span = $startedSpans[0]->span;
 
-        $I->assertEquals('app:test:command-ok', $span->context->command['name'] ?? null);
+        $I->assertEquals('app:test:command-ok', $span->context->command['name'] ?? null, 'Проверка имени успешной команды в контексте спана');
 
-        $I->assertEqualsCanonicalizing($span->context->command, [
-            'name' => 'app:test:command-ok'
-        ]);
-        $I->assertEqualsCanonicalizing($span->context->framework, [
-            'debug' => false,
-            'environment' => 'test',
-            'framework' => 'symfony',
-            'version' => Kernel::VERSION
-        ]);
-        $I->assertEqualsCanonicalizing($span->context->process, [
-            'executable' => '/usr/local/bin/php',
-            'interactive' => \posix_isatty(\STDIN) || \posix_isatty(\STDOUT),
-            'pid' => \posix_getpid(),
-            'parent_pid' => \posix_getppid(),
-            'runtime_name' => 'cli',
-            'runtime_version' => PHP_VERSION
-        ]);
+        $I->assertEqualsCanonicalizing(
+            $span->context->command,
+            [
+                'name' => 'app:test:command-ok'
+            ],
+            'Проверка контекста команды для успешного запуска.'
+        );
+        $I->assertEqualsCanonicalizing(
+            $span->context->framework,
+            [
+                'debug' => false,
+                'environment' => 'test',
+                'framework' => 'symfony',
+                'version' => Kernel::VERSION
+            ],
+            'Проверка контекста Symfony framework для успешного запуска.'
+        );
+        $I->assertEqualsCanonicalizing(
+            $span->context->process,
+            [
+                'executable' => '/usr/local/bin/php',
+                'interactive' => \posix_isatty(\STDIN) || \posix_isatty(\STDOUT),
+                'pid' => \posix_getpid(),
+                'parent_pid' => \posix_getppid(),
+                'runtime_name' => 'cli',
+                'runtime_version' => PHP_VERSION
+            ],
+            'Проверка контекста процесса для успешного запуска команды.'
+        );
     }
 
     public function testError(FunctionalTester $I): void
@@ -59,8 +71,8 @@ class TracingCommandCest
 
         $span = $startedSpans[0]->span;
 
-        $I->assertEquals('app:test:command-fail', $span->context->command['name'] ?? null);
+        $I->assertEquals('app:test:command-fail', $span->context->command['name'] ?? null, 'Проверка имени неуспешной команды в контексте спана');
 
-        $I->assertInstanceOf(\RuntimeException::class, $span->getError(), 'Ожидали RuntimeException');
+        $I->assertInstanceOf(\RuntimeException::class, $span->getError(), 'Проверка типа ошибки неуспешной команды');
     }
 }

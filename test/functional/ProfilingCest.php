@@ -43,16 +43,16 @@ class ProfilingCest
                 continue;
             }
 
-            $I->assertIsArray($awaiting[$idx] ?? null);
+            $I->assertIsArray($awaiting[$idx] ?? null, 'Проверка наличия ожидаемых данных для профилирующего спана');
 
             $name = ($span->context->profile['stacktrace'] ?? [])[0] ?? '';
 
-            $I->assertStringContainsString($awaiting[$idx][0], $name);
+            $I->assertStringContainsString($awaiting[$idx][0], $name, 'Проверка имени функции в stacktrace профилирующего спана');
 
-            $I->assertEquals(SpanBundle::SPAN_TYPE_INTERNAL, $span->getType());
+            $I->assertEquals(SpanBundle::SPAN_TYPE_INTERNAL, $span->getType(), 'Проверка типа профилирующего спана');
 
-            $I->assertGreaterThan($awaiting[$idx][1] - 0.02, $span->getEndTime() - $span->getStartTime());
-            $I->assertLessThan($awaiting[$idx][1] + 0.02, $span->getEndTime() - $span->getStartTime());
+            $I->assertGreaterThan($awaiting[$idx][1] - 0.02, $span->getEndTime() - $span->getStartTime(), 'Проверка нижней границы длительности профилирующего спана');
+            $I->assertLessThan($awaiting[$idx][1] + 0.02, $span->getEndTime() - $span->getStartTime(), 'Проверка верхней границы длительности профилирующего спана');
 
             $idx++;
         }

@@ -32,7 +32,7 @@ class TracingDoctrineDbalCest
             }
         }
 
-        $I->assertCount(11, $dbSpans, 'Ожидали минимум 11 DB span\'ов');
+        $I->assertCount(11, $dbSpans, 'Проверка количества DB-спанов');
 
         $insertSpan = null;
         foreach ($dbSpans as $span) {
@@ -42,15 +42,15 @@ class TracingDoctrineDbalCest
             }
         }
 
-        $I->assertNotNull($insertSpan, 'Ожидали найти INSERT INTO span');
-        $I->assertEquals(SpanBundle::SPAN_TYPE_DB, $insertSpan->getType(), 'Ожидали тип db');
-        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_POSTGRESQL, $insertSpan->getSubtype(), 'Ожидали подтип postgresql');
-        $I->assertTrue($insertSpan->isSuccessful(), 'Ожидали успешное выполнение');
-        $I->assertNull($insertSpan->getError(), 'Ожидали отсутствие ошибки');
+        $I->assertNotNull($insertSpan, 'Проверка наличия INSERT DB-спана');
+        $I->assertEquals(SpanBundle::SPAN_TYPE_DB, $insertSpan->getType(), 'Проверка типа INSERT DB-спана');
+        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_POSTGRESQL, $insertSpan->getSubtype(), 'Проверка подтипа INSERT DB-спана');
+        $I->assertTrue($insertSpan->isSuccessful(), 'Проверка успешного завершения INSERT DB-спана');
+        $I->assertNull($insertSpan->getError(), 'Проверка отсутствия ошибки у INSERT DB-спана');
 
-        $I->assertNotNull($insertSpan->context->db['statement'], 'Ожидали SQL statement в context');
-        $I->assertEquals('sql', $insertSpan->context->db['type'], 'Ожидали db.type = sql');
-        $I->assertEquals('symfony_span_bundle', $insertSpan->context->db['instance'], 'Ожидали db.instance = symfony_span_bundle');
+        $I->assertNotNull($insertSpan->context->db['statement'], 'Проверка наличия SQL statement в контексте INSERT DB-спана');
+        $I->assertEquals('sql', $insertSpan->context->db['type'], 'Проверка значения db.type у INSERT DB-спана');
+        $I->assertEquals('symfony_span_bundle', $insertSpan->context->db['instance'], 'Проверка значения db.instance у INSERT DB-спана');
 
         $updateSpan = null;
         foreach ($dbSpans as $span) {
@@ -60,7 +60,7 @@ class TracingDoctrineDbalCest
             }
         }
 
-        $I->assertNotNull($updateSpan, 'Ожидали найти UPDATE span');
+        $I->assertNotNull($updateSpan, 'Проверка наличия UPDATE DB-спана');
 
         // Проверяем SELECT span
         $selectSpan = null;
@@ -71,7 +71,7 @@ class TracingDoctrineDbalCest
             }
         }
 
-        $I->assertNotNull($selectSpan, 'Ожидали найти SELECT span');
+        $I->assertNotNull($selectSpan, 'Проверка наличия SELECT DB-спана');
 
         $updateSpan = null;
         foreach ($dbSpans as $span) {
@@ -81,7 +81,7 @@ class TracingDoctrineDbalCest
             }
         }
 
-        $I->assertNotNull($updateSpan, 'Ожидали найти UPDATE span');
+        $I->assertNotNull($updateSpan, 'Проверка наличия UPDATE DB-спана');
 
         // Проверяем DELETE span
         $deleteSpan = null;
@@ -92,11 +92,11 @@ class TracingDoctrineDbalCest
             }
         }
 
-        $I->assertNotNull($deleteSpan, 'Ожидали найти DELETE span');
+        $I->assertNotNull($deleteSpan, 'Проверка наличия DELETE DB-спана');
 
         foreach ($dbSpans as $span) {
-            $I->assertTrue($span->isSuccessful(), 'Ожидали успешное выполнение span');
-            $I->assertNull($span->getError(), 'Ожидали отсутствие ошибки для span');
+            $I->assertTrue($span->isSuccessful(), 'Проверка успешного завершения DB-спана');
+            $I->assertNull($span->getError(), 'Проверка отсутствия ошибки у DB-спана');
         }
     }
 }

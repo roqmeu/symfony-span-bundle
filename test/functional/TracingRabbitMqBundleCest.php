@@ -26,18 +26,18 @@ class TracingRabbitMqBundleCest
         $this->assertEventsCounts($I, $allEvents, 2, 1);
 
         $span = $this->getEventSpanByType($endedSpans, SpanBundle::SPAN_TYPE_PRODUCER);
-        $I->assertNotNull($span, 'Должен быть спан продюсера');
+        $I->assertNotNull($span, 'Проверка наличия спана продюсера RabbitMqBundle');
 
-        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'Подтип спана продюсера');
-        $I->assertEquals(true, $span->isSuccessful(), 'Спан продюсера должен быть успешным');
-        $I->assertNull($span->getError(), 'Ошибка должна отсутствовать');
+        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'Проверка подтипа спана продюсера RabbitMqBundle');
+        $I->assertEquals(true, $span->isSuccessful(), 'Проверка успешного завершения спана продюсера RabbitMqBundle');
+        $I->assertNull($span->getError(), 'Проверка отсутствия ошибки у спана продюсера RabbitMqBundle');
 
-        $I->assertEquals('rabbitmq', $span->context->server['host'] ?? null, 'Host должен быть из connection');
-        $I->assertEquals(5672, $span->context->server['port'] ?? null, 'Port должен быть из connection');
+        $I->assertEquals('rabbitmq', $span->context->server['host'] ?? null, 'Проверка host сервера RabbitMqBundle для спана продюсера');
+        $I->assertEquals(5672, $span->context->server['port'] ?? null, 'Проверка port сервера RabbitMqBundle для спана продюсера');
 
-        $I->assertEmpty($span->context->message['consumer_name'] ?? null, 'message consumer_name для producer не должен быть заполнен');
-        $I->assertEmpty($span->context->message['name'] ?? null, 'message name не должно быть заполнено');
-        $I->assertEquals('rabbitmq_bundle_exchange_ok', $span->context->message['queue_name'] ?? null, 'message queue_name для producer должен быть равен exchange');
+        $I->assertEmpty($span->context->message['consumer_name'] ?? null, 'Проверка отсутствия consumer_name у сообщения продюсера RabbitMqBundle');
+        $I->assertEmpty($span->context->message['name'] ?? null, 'Проверка отсутствия имени сообщения продюсера RabbitMqBundle');
+        $I->assertEquals('rabbitmq_bundle_exchange_ok', $span->context->message['queue_name'] ?? null, 'Проверка имени exchange у сообщения продюсера RabbitMqBundle');
 
         $startedSpans = [];
         $endedSpans = [];
@@ -51,19 +51,19 @@ class TracingRabbitMqBundleCest
         $this->assertEventsCounts($I, $allEvents, 2, 2);
 
         $span = $this->getEventSpanByType($endedSpans, SpanBundle::SPAN_TYPE_CONSUMER);
-        $I->assertNotNull($span, 'Должен быть спан консюмера');
+        $I->assertNotNull($span, 'Проверка наличия спана консюмера RabbitMqBundle');
 
-        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'Подтип спана консюмера');
+        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'Проверка подтипа спана консюмера RabbitMqBundle');
 
-        $I->assertEquals(true, $span->isSuccessful(), 'Спан должен быть успешным');
-        $I->assertNull($span->getError(), 'Ошибка должна отсутствовать');
+        $I->assertEquals(true, $span->isSuccessful(), 'Проверка успешного завершения спана консюмера RabbitMqBundle');
+        $I->assertNull($span->getError(), 'Проверка отсутствия ошибки у спана консюмера RabbitMqBundle');
 
-        $I->assertEquals('rabbitmq', $span->context->server['host'] ?? null, 'Host должен быть из connection');
-        $I->assertEquals(5672, $span->context->server['port'] ?? null, 'Port должен быть из connection');
+        $I->assertEquals('rabbitmq', $span->context->server['host'] ?? null, 'Проверка host сервера RabbitMqBundle для спана консюмера');
+        $I->assertEquals(5672, $span->context->server['port'] ?? null, 'Проверка port сервера RabbitMqBundle для спана консюмера.');
 
-        $I->assertNotEmpty($span->context->message['consumer_name'] ?? null, 'message consumer_name должен быть заполнен');
-        $I->assertEmpty($span->context->message['name'] ?? null, 'message name не должно быть заполнено');
-        $I->assertEquals('rabbitmq_bundle_queue_ok', $span->context->message['queue_name'] ?? null, 'message queue_name для consumer должен быть равен queue');
+        $I->assertNotEmpty($span->context->message['consumer_name'] ?? null, 'Проверка наличия consumer_name у сообщения консюмера RabbitMqBundle.');
+        $I->assertEmpty($span->context->message['name'] ?? null, 'Проверка отсутствия имени сообщения консюмера RabbitMqBundle.');
+        $I->assertEquals('rabbitmq_bundle_queue_ok', $span->context->message['queue_name'] ?? null, 'Проверка имени очереди у сообщения консюмера RabbitMqBundle.');
     }
 
     public function testError(FunctionalTester $I): void
@@ -89,18 +89,18 @@ class TracingRabbitMqBundleCest
         $this->assertEventsCounts($I, $allEvents, 2, 2);
 
         $span = $this->getEventSpanByType($endedSpans, SpanBundle::SPAN_TYPE_CONSUMER);
-        $I->assertNotNull($span, 'Должен быть спан консюмера');
+        $I->assertNotNull($span, 'Проверка наличия спана консюмера RabbitMqBundle.');
 
-        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'Подтип спана консюмера');
+        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'Проверка подтипа спана консюмера RabbitMqBundle.');
 
-        $I->assertEquals(false, $span->isSuccessful(), 'Спан должен быть неуспешным');
-        $I->assertInstanceOf(\RuntimeException::class, $span->getError(), 'Ожидаем RuntimeException в error');
+        $I->assertEquals(false, $span->isSuccessful(), 'Проверка неуспешного завершения спана консюмера RabbitMqBundle.');
+        $I->assertInstanceOf(\RuntimeException::class, $span->getError(), 'Проверка типа ошибки у спана консюмера RabbitMqBundle.');
 
-        $I->assertEquals('rabbitmq', $span->context->server['host'] ?? null, 'Host должен быть из connection');
-        $I->assertEquals(5672, $span->context->server['port'] ?? null, 'Port должен быть из connection');
+        $I->assertEquals('rabbitmq', $span->context->server['host'] ?? null, 'Проверка host сервера RabbitMqBundle для спана консюмера.');
+        $I->assertEquals(5672, $span->context->server['port'] ?? null, 'Проверка port сервера RabbitMqBundle для спана консюмера.');
 
-        $I->assertNotEmpty($span->context->message['consumer_name'] ?? null, 'consumer_name должен быть заполнен');
-        $I->assertEmpty($span->context->message['name'] ?? null, 'message name не должно быть заполнено');
-        $I->assertEquals('rabbitmq_bundle_queue_fail', $span->context->message['queue_name'] ?? null, 'message queue_name для consumer должен быть равен queue');
+        $I->assertNotEmpty($span->context->message['consumer_name'] ?? null, 'Проверка наличия consumer_name у сообщения консюмера RabbitMqBundle.');
+        $I->assertEmpty($span->context->message['name'] ?? null, 'Проверка отсутствия имени сообщения консюмера RabbitMqBundle.');
+        $I->assertEquals('rabbitmq_bundle_queue_fail', $span->context->message['queue_name'] ?? null, 'Проверка имени очереди у сообщения консюмера RabbitMqBundle при ошибке.');
     }
 }

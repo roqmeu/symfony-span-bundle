@@ -36,10 +36,10 @@ class TracingMessengerRedisCest
 
         $span = $this->getEventSpanByType($endedSpans, SpanBundle::SPAN_TYPE_CONSUMER);
 
-        $I->assertNotNull($span, 'Должен быть спан консюмера');
-        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_REDIS, $span->getSubtype(), 'Подтип спана должен быть задан');
+        $I->assertNotNull($span, 'Проверка наличия спана консюмера Redis');
+        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_REDIS, $span->getSubtype(), 'Проверка подтипа спана консюмера Redis');
 
-        $I->assertEquals(true, $span->isSuccessful(), 'Спан должен быть успешным');
-        $I->assertEquals(null, $span->getError(), 'Ошибка должна отсутствовать');
+        $I->assertEquals(true, $span->isSuccessful(), 'Проверка успешного завершения спана консюмера Redis');
+        $I->assertEquals(null, $span->getError(), 'Проверка отсутствия ошибки у спана консюмера Redis');
     }
 }

@@ -27,14 +27,14 @@ class TracingMessengerAmqpCest
 
         $span = $this->getEventSpanByType($endedSpans, SpanBundle::SPAN_TYPE_PRODUCER);
 
-        $I->assertNotNull($span, 'TODO');
-        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'TODO');
+        $I->assertNotNull($span, 'Проверка наличия спана продюсера RabbitMQ');
+        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'Проверка подтипа спана продюсера RabbitMQ');
 
-        $I->assertEquals('rabbitmq', $span->context->server['host'], 'TODO');
-        $I->assertEquals(5672, $span->context->server['port'], 'TODO');
+        $I->assertEquals('rabbitmq', $span->context->server['host'] ?? null, 'Проверка host сервера RabbitMQ для спана продюсера');
+        $I->assertEquals(5672, $span->context->server['port'] ?? null, 'Проверка port сервера RabbitMQ для спана продюсера');
 
-        $I->assertNotEmpty($span->context->message['name'], 'TODO');
-        $I->assertEquals('rabbitmq_exchange_name', $span->context->message['queue_name'], 'TODO');
+        $I->assertNotEmpty($span->context->message['name'] ?? null, 'Проверка имени сообщения в спане продюсера RabbitMQ');
+        $I->assertEquals('rabbitmq_exchange_name', $span->context->message['queue_name'] ?? null, 'Проверка имени exchange в контексте сообщения продюсера RabbitMQ');
 
         $startedSpans = [];
         $endedSpans = [];
@@ -53,21 +53,21 @@ class TracingMessengerAmqpCest
             $span = $event->span;
 
             if ($span->getType() === SpanBundle::SPAN_TYPE_CONSUMER) {
-                $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'TODO');
+                $I->assertEquals(SpanBundle::SPAN_SUBTYPE_RABBITMQ, $span->getSubtype(), 'Проверка подтипа спана консюмера RabbitMQ');
 
-                $I->assertEquals('rabbitmq', $span->context->server['host'], 'TODO');
-                $I->assertEquals(5672, $span->context->server['port'], 'TODO');
+                $I->assertEquals('rabbitmq', $span->context->server['host'] ?? null, 'Проверка host сервера RabbitMQ для спана консюмера');
+                $I->assertEquals(5672, $span->context->server['port'] ?? null, 'Проверка port сервера RabbitMQ для спана консюмера');
 
-                $I->assertNotEmpty($span->context->message['consumer_name'], 'TODO');
-                $I->assertNotEmpty($span->context->message['name'], 'TODO');
-                $I->assertEquals('rabbitmq_queue_name', $span->context->message['queue_name'], 'TODO');
+                $I->assertNotEmpty($span->context->message['consumer_name'] ?? null, 'Проверка имени консюмера в контексте сообщения RabbitMQ');
+                $I->assertNotEmpty($span->context->message['name'] ?? null, 'Проверка имени сообщения в спане консюмера RabbitMQ');
+                $I->assertEquals('rabbitmq_queue_name', $span->context->message['queue_name'] ?? null, 'Проверка имени очереди в контексте сообщения консюмера RabbitMQ');
 
                 $attempt = $event->span->context->message['retry_attempt'] ?? null;
 
-                $I->assertEquals($index, $attempt, 'TODO');
+                $I->assertEquals($index, $attempt, 'Проверка номера попытки обработки сообщения RabbitMQ');
 
                 if ($attempt > 0) {
-                    $I->assertGreaterThan(0, $event->span->context->message['retry_delay'] ?? null, 'TODO');
+                    $I->assertGreaterThan(0, $event->span->context->message['retry_delay'] ?? null, 'Проверка положительной задержки повторной обработки сообщения RabbitMQ');
                 }
 
                 $index++;

@@ -84,18 +84,25 @@ class GuzzleMiddlewarePass implements CompilerPassInterface
     private function addTracingMiddleware(ContainerBuilder $container, string $clientId): void
     {
         $client = $container->getDefinition($clientId);
-
         $args = $client->getArguments();
-        $config = $args['$config'] ?? ($args[0] ?? []);
 
-        if (!\is_array($config)) {
-            return;
+        $configKey = 0;
+        $config = $args[$configKey] ?? null;
+
+        if (!\is_array($config) || $config === []) {
+            $configKey = '$config';
+            $config = $args[$configKey] ?? null;
+
+            if (!\is_array($config)) {
+                $configKey = 0;
+                $config = [];
+            }
         }
 
         if (isset($config['handler'])) {
             $this->addMiddlewareToExistingHandler($container, $config['handler']);
         } else {
-            $this->createHandlerStack($client, $config);
+            $this->createHandlerStack($client, $config, $configKey);
         }
     }
 
@@ -129,7 +136,10 @@ class GuzzleMiddlewarePass implements CompilerPassInterface
         return null;
     }
 
-    private function createHandlerStack(Definition $client, array $config): void
+    /**
+     * @param int|string $configKey
+     */
+    private function createHandlerStack(Definition $client, array $config, $configKey): void
     {
         $handlerStack = new Definition(HandlerStack::class);
         $handlerStack->setFactory([HandlerStack::class, 'create']);
@@ -138,7 +148,7 @@ class GuzzleMiddlewarePass implements CompilerPassInterface
 
         $config['handler'] = $handlerStack;
 
-        $client->setArgument('$config', $config);
+        $client->setArgument($configKey, $config);
     }
 
     private function createMiddlewareFactory(): Definition

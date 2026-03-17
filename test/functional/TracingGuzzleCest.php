@@ -34,8 +34,8 @@ class TracingGuzzleCest
             }
         }
 
-        $I->assertNotNull($span, 'Ожидали найти спан для Guzzle HTTP запроса');
-        $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Ожидали тип client');
-        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Ожидали подтип http');
+        $I->assertNotNull($span, 'Проверка наличия спана Guzzle HTTP-запроса');
+        $I->assertEquals(SpanBundle::SPAN_TYPE_CLIENT, $span->getType(), 'Проверка типа спана Guzzle HTTP-запроса');
+        $I->assertEquals(SpanBundle::SPAN_SUBTYPE_HTTP, $span->getSubtype(), 'Проверка подтипа спана Guzzle HTTP-запроса');
     }
 }
